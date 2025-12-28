@@ -21,6 +21,7 @@ interface DroppableLaneProps {
   onTogglePackage?: (itemId: string) => void;  // 切換 Package 狀態
   onQuantityChange?: (itemId: string, newQuantity: number) => void;  // 更改數量
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
+  getBatchQCStatus?: (batchNumber: string) => 'QC中' | 'QC完成' | 'NG' | null;  // 取得 QC 狀態
 }
 
 export default function DroppableLane({ 
