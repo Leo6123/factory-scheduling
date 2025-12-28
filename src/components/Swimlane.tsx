@@ -395,14 +395,11 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     
     // 明確儲存到資料庫（確保資料持久化）
     try {
-      const success = await saveScheduleItems(newItems);
-      if (success) {
-        console.log(`✅ 成功匯入 ${importedItems.length} 筆資料並儲存到 Supabase`);
-      } else {
-        console.warn('⚠️ 匯入資料儲存到 Supabase 失敗，但已儲存到本地 localStorage');
-      }
+      await saveScheduleItems(newItems);
+      console.log(`✅ 成功匯入 ${importedItems.length} 筆資料並儲存到 Supabase`);
     } catch (err) {
       console.error('❌ 匯入資料儲存失敗:', err);
+      console.warn('⚠️ 匯入資料儲存到 Supabase 失敗，但已儲存到本地 localStorage');
       // 即使 Supabase 儲存失敗，資料仍會存在 localStorage 中
     }
   };
