@@ -1,0 +1,8 @@
+# Project Overview 這是一個工廠生產排程系統 (APS) 的 MVP 開發專案。 
+目標是建立一個 Web 介面，讓生管人員能透過拖拉方式管理排程，並獲得 AI 的優化建議。
+# Core Rules (核心規則)
+## 1. 產線定義 (Production Lines) - 系統必須固定包含 **11 條產線**。 - 產線名稱需可設定或寫死 (Hardcoded for MVP)(預設產線名稱: TS26, 27CC, TS75, HP40A, HP40B, MAXX40, TS58, 50CC, MAXX50, SE51, SE85)。
+## 2. 顯示欄位 (Display Fields) 排程卡片 (Task Card) 必須顯示以下資訊： - 產品名稱 (Material number) - 批號 (Batch) – 生產數量(Target quantity) – 需求日期 (Goods Issue Date) 
+## 3. 功能需求 (Functional Requirements) - **Excel 整合**：必須支援匯入 Excel 訂單資料(每次可新增訂單資訊)，需定義明確的欄位對應規則。 - **視覺化操作**：支援「拖拉 (Drag & Drop)」方式調整排程。 - **視圖切換**：需支援時間軸縮放，層級包含：月 (Month) → 日 (Day) → 24小時 (24h)。 
+## 4. AI 演算法邏輯 (AI Logic) 系統需具備 AI 建議功能，優化邏輯如下： - **歷史數據匹配**：根據產品歷史資料，自動建議適合的產線。 - **換線成本優化**：考慮顏色順序 (由淺入深) 與換線清洗成本，給出最佳排序建議。 
+## 5. 開發規範 (Development Standards) - **優先產出 MVP**：以最小可行性產品為優先，確保核心功能可執行。 - **專案結構**：請建議並維持清晰的資料夾結構與命名規則。 - **每次改動**：修改程式碼後，請確保 `npm run dev` 能正常執行。

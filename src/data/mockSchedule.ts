@@ -1,0 +1,86 @@
+import { ScheduleItem } from "@/types/schedule";
+
+// 模擬排程資料
+export const mockScheduleItems: ScheduleItem[] = [
+  {
+    id: "1",
+    productName: "PRD-A1001",
+    batchNumber: "B2024-001",
+    quantity: 500,
+    deliveryDate: "2024-12-25",
+    lineId: "TS26",
+  },
+  {
+    id: "2",
+    productName: "PRD-B2002",
+    batchNumber: "B2024-002",
+    quantity: 1200,
+    deliveryDate: "2024-12-26",
+    lineId: "TS26",
+  },
+  {
+    id: "3",
+    productName: "PRD-C3003",
+    batchNumber: "B2024-003",
+    quantity: 800,
+    deliveryDate: "2024-12-24",
+    lineId: "27CC",
+  },
+  {
+    id: "4",
+    productName: "PRD-D4004",
+    batchNumber: "B2024-004",
+    quantity: 2500,
+    deliveryDate: "2024-12-27",
+    lineId: "HP40A",
+  },
+  {
+    id: "5",
+    productName: "PRD-E5005",
+    batchNumber: "B2024-005",
+    quantity: 350,
+    deliveryDate: "2024-12-28",
+    lineId: "MAXX40",
+  },
+  {
+    id: "6",
+    productName: "PRD-F6006",
+    batchNumber: "B2024-006",
+    quantity: 1800,
+    deliveryDate: "2024-12-29",
+    lineId: "TS58",
+  },
+  {
+    id: "7",
+    productName: "PRD-G7007",
+    batchNumber: "B2024-007",
+    quantity: 950,
+    deliveryDate: "2024-12-25",
+    lineId: "50CC",
+  },
+  {
+    id: "8",
+    productName: "PRD-H8008",
+    batchNumber: "B2024-008",
+    quantity: 620,
+    deliveryDate: "2024-12-26",
+    lineId: "SE51",
+  },
+  {
+    id: "9",
+    productName: "PRD-I9009",
+    batchNumber: "B2024-009",
+    quantity: 1100,
+    deliveryDate: "2024-12-30",
+    lineId: "SE85",
+  },
+  {
+    id: "10",
+    productName: "PRD-J1010",
+    batchNumber: "B2024-010",
+    quantity: 750,
+    deliveryDate: "2024-12-31",
+    lineId: "TS75",
+  },
+];
+
