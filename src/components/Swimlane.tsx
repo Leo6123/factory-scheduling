@@ -825,12 +825,12 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                   
                   if (viewMode === "card") {
                     // 卡片模式：使用與時間軸相同的邏輯來排序
-                    // 直接使用 getLineItemsForDateRange 獲取項目，然後按照日期和 startHour 排序
+                    // 使用 displayStartHour 來排序，確保與時間軸順序完全一致
                     const dateRange = getDateRange(cardDayRange);
-                    const allItems: ScheduleItem[] = [];
+                    const itemArray: Array<{ item: ScheduleItem; date: string; hour: number }> = [];
                     const seenIds = new Set<string>();
                     
-                    // 收集日期範圍內的所有項目
+                    // 收集日期範圍內的所有項目，保留 displayStartHour 信息
                     for (const dateStr of dateRange) {
                       const blocks = getBlocksForDate(scheduleItems, line.id, dateStr, lineConfigs);
                       for (const block of blocks) {
@@ -838,31 +838,30 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                         if (!block.isCarryOver && !block.item.isCleaningProcess && !block.item.isMaintenance) {
                           if (!seenIds.has(block.item.id)) {
                             seenIds.add(block.item.id);
-                            allItems.push(block.item);
+                            itemArray.push({
+                              item: block.item,
+                              date: dateStr,
+                              hour: block.displayStartHour, // 使用 displayStartHour（與時間軸一致）
+                            });
                           }
                         }
                       }
                     }
                     
-                    // 按照日期和 startHour 排序（與時間軸順序一致）
-                    lineItems = allItems.sort((a, b) => {
+                    // 按照日期和 displayStartHour 排序（與時間軸順序一致）
+                    itemArray.sort((a, b) => {
                       // 先按日期排序
-                      if (a.scheduleDate && b.scheduleDate) {
-                        const dateCompare = a.scheduleDate.localeCompare(b.scheduleDate);
-                        if (dateCompare !== 0) {
-                          return dateCompare;
-                        }
-                      } else if (a.scheduleDate) {
-                        return -1;
-                      } else if (b.scheduleDate) {
-                        return 1;
+                      const dateCompare = a.date.localeCompare(b.date);
+                      if (dateCompare !== 0) {
+                        return dateCompare;
                       }
                       
-                      // 日期相同時，按 startHour 排序
-                      const hourA = a.startHour ?? Infinity;
-                      const hourB = b.startHour ?? Infinity;
-                      return hourA - hourB;
+                      // 日期相同時，按 displayStartHour 排序（與時間軸一致）
+                      return a.hour - b.hour;
                     });
+                    
+                    // 提取排序後的項目
+                    lineItems = itemArray.map(entry => entry.item);
                   } else {
                     // 時間軸模式：使用原有的邏輯
                     lineItems = getLineItemsForDate(line.id).filter(item => !item.isCleaningProcess && !item.isMaintenance);
