@@ -32,6 +32,7 @@ interface UnscheduledSidebarProps {
   onUndo?: () => void;  // 回到上一步
   canUndo?: boolean;    // 是否可以回上一步
   getBatchQCStatus?: (batchNumber: string) => 'QC中' | 'QC完成' | 'NG' | null;  // 取得 QC 狀態
+  scheduledItemOrder?: string[];  // 已排程卡片的順序 (productName 陣列)
 }
 
 export default function UnscheduledSidebar({
@@ -55,6 +56,7 @@ export default function UnscheduledSidebar({
   onUndo,
   canUndo = false,
   getBatchQCStatus,
+  scheduledItemOrder = [],
 }: UnscheduledSidebarProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: "UNSCHEDULED",
@@ -169,19 +171,76 @@ export default function UnscheduledSidebar({
       >
         {items.length > 0 ? (
           <div className="flex flex-col gap-2">
-            {items.map((item) => (
-              <DraggableCard 
-                key={item.id} 
-                item={item}
-                onToggleCrystallization={onToggleCrystallization}
-                onToggleCCD={onToggleCCD}
-                onToggleDryblending={onToggleDryblending}
-                onTogglePackage={onTogglePackage}
-                onQuantityChange={onQuantityChange}
-                onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
-                qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}
-              />
-            ))}
+            {(() => {
+              // 根據已排程卡片的順序排序未排程卡片
+              const sortedItems = [...items].sort((a, b) => {
+                // 取得 productName 的前綴（例如 MO、PE、AC）
+                const getProductPrefix = (productName: string): string => {
+                  // 提取前兩個字母作為前綴（例如 MO13425033 -> MO）
+                  const match = productName.match(/^([A-Z]{2})/);
+                  return match ? match[1] : productName;
+                };
+                
+                const prefixA = getProductPrefix(a.productName);
+                const prefixB = getProductPrefix(b.productName);
+                
+                // 如果兩個前綴相同，保持原有順序
+                if (prefixA === prefixB) {
+                  return 0;
+                }
+                
+                // 查找在已排程順序中的位置
+                const indexA = scheduledItemOrder.indexOf(prefixA);
+                const indexB = scheduledItemOrder.indexOf(prefixB);
+                
+                // 如果都在順序中，按照順序排列
+                if (indexA !== -1 && indexB !== -1) {
+                  return indexA - indexB;
+                }
+                
+                // 如果只有一個在順序中，在順序中的排在前面
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+                
+                // 如果都不在順序中，按照字母順序排列
+                return prefixA.localeCompare(prefixB);
+              });
+              
+              // 調試：顯示排序結果
+              if (items.length > 0 && scheduledItemOrder.length > 0) {
+                console.log('📋 未排程卡片排序:', {
+                  scheduledOrder: scheduledItemOrder,
+                  unscheduledItems: items.map(item => {
+                    const match = item.productName.match(/^([A-Z]{2})/);
+                    return {
+                      prefix: match ? match[1] : '?',
+                      productName: item.productName,
+                    };
+                  }),
+                  sortedItems: sortedItems.map(item => {
+                    const match = item.productName.match(/^([A-Z]{2})/);
+                    return {
+                      prefix: match ? match[1] : '?',
+                      productName: item.productName,
+                    };
+                  }),
+                });
+              }
+              
+              return sortedItems.map((item) => (
+                <DraggableCard 
+                  key={item.id} 
+                  item={item}
+                  onToggleCrystallization={onToggleCrystallization}
+                  onToggleCCD={onToggleCCD}
+                  onToggleDryblending={onToggleDryblending}
+                  onTogglePackage={onTogglePackage}
+                  onQuantityChange={onQuantityChange}
+                  onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
+                  qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}
+                />
+              ));
+            })()}
           </div>
         ) : (
           <div className={`h-full flex items-center justify-center text-sm italic

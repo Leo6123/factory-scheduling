@@ -515,6 +515,71 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     (item) => item.lineId === UNSCHEDULED_LANE.id
   );
 
+  // 計算已排程卡片的順序（按照24小時時間軸的順序）
+  const scheduledItemOrder = useMemo(() => {
+    if (!selectedDateStr) {
+      console.log('📋 未選擇日期，無法計算排程順序');
+      return [];
+    }
+    
+    // 從所有產線收集已排程的卡片，按照時間順序排列
+    const scheduledBlocks: Array<{ productName: string; startHour: number; lineId: string }> = [];
+    
+    for (const line of PRODUCTION_LINES) {
+      const blocks = getBlocksForDate(scheduleItems, line.id, selectedDateStr, lineConfigs);
+      for (const block of blocks) {
+        // 只取當天開始的區塊（不包含跨日延續的）
+        if (!block.isCarryOver) {
+          scheduledBlocks.push({
+            productName: block.item.productName,
+            startHour: block.displayStartHour,
+            lineId: line.id,
+          });
+        }
+      }
+    }
+    
+    // 按照時間順序排序
+    scheduledBlocks.sort((a, b) => {
+      // 先按時間排序
+      if (a.startHour !== b.startHour) {
+        return a.startHour - b.startHour;
+      }
+      // 時間相同時，按產線ID排序（保持穩定性）
+      return a.lineId.localeCompare(b.lineId);
+    });
+    
+    // 提取 productName 的前綴（例如 MO、PE、AC），並去重
+    const prefixOrder: string[] = [];
+    const seenPrefixes = new Set<string>();
+    
+    for (const block of scheduledBlocks) {
+      // 提取前兩個字母作為前綴（例如 MO13425033 -> MO）
+      const match = block.productName.match(/^([A-Z]{2})/);
+      if (match) {
+        const prefix = match[1];
+        if (!seenPrefixes.has(prefix)) {
+          prefixOrder.push(prefix);
+          seenPrefixes.add(prefix);
+        }
+      }
+    }
+    
+    console.log('📋 已排程卡片順序:', {
+      date: selectedDateStr,
+      totalBlocks: scheduledBlocks.length,
+      prefixOrder,
+      blocks: scheduledBlocks.map(b => ({
+        prefix: b.productName.match(/^([A-Z]{2})/)?.[1] || '?',
+        productName: b.productName,
+        hour: b.startHour,
+        lineId: b.lineId,
+      })),
+    });
+    
+    return prefixOrder;
+  }, [scheduleItems, selectedDateStr, lineConfigs]);
+
   // 取得日期範圍內的日期字串陣列
   const getDateRange = (days: number): string[] => {
     if (!selectedDay) return [];
@@ -632,6 +697,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           onUndo={handleUndo}
           canUndo={history.length > 0}
           getBatchQCStatus={getBatchQCStatus}
+          scheduledItemOrder={scheduledItemOrder}
         />
 
         {/* 右側：產線區域 */}
@@ -755,10 +821,65 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                     lineConfigs
                   );
                   // 卡片模式的項目 (支援日期範圍)，過濾掉清機流程和故障維修
-                  const lineItems = (viewMode === "card" 
-                    ? getLineItemsForDateRange(line.id, cardDayRange)
-                    : getLineItemsForDate(line.id)
-                  ).filter(item => !item.isCleaningProcess && !item.isMaintenance);
+                  let lineItems: ScheduleItem[] = [];
+                  
+                  if (viewMode === "card") {
+                    // 卡片模式：使用 getBlocksForDate 來獲取排序後的項目
+                    // 這樣可以確保與 24 小時時間軸的順序一致
+                    const dateRange = getDateRange(cardDayRange);
+                    const itemArray: Array<{ item: ScheduleItem; date: string; hour: number }> = [];
+                    const seenItemIds = new Set<string>();
+                    
+                    // 對每個日期，用 getBlocksForDate 找出該日有顯示的訂單（已按時間排序）
+                    for (const dateStr of dateRange) {
+                      const blocks = getBlocksForDate(scheduleItems, line.id, dateStr, lineConfigs);
+                      
+                      for (const block of blocks) {
+                        // 只取當天開始的區塊（不包含跨日延續的），並過濾清機流程和故障維修
+                        if (!block.isCarryOver && !block.item.isCleaningProcess && !block.item.isMaintenance) {
+                          // 避免重複，但保留排序信息
+                          if (!seenItemIds.has(block.item.id)) {
+                            seenItemIds.add(block.item.id);
+                            itemArray.push({
+                              item: block.item,
+                              date: dateStr,
+                              hour: block.displayStartHour, // 使用 displayStartHour（與時間軸一致）
+                            });
+                          }
+                        }
+                      }
+                    }
+                    
+                    // 按照日期和時間排序（與時間軸順序一致）
+                    // 使用與 getBlocksForDate 相同的排序邏輯
+                    itemArray.sort((a, b) => {
+                      // 先按日期排序
+                      const dateCompare = a.date.localeCompare(b.date);
+                      if (dateCompare !== 0) {
+                        return dateCompare;
+                      }
+                      
+                      // 日期相同時，按 displayStartHour 排序（與時間軸一致）
+                      return a.hour - b.hour;
+                    });
+                    
+                    // 提取排序後的項目
+                    lineItems = itemArray.map(entry => entry.item);
+                    
+                    // 調試：確認排序結果
+                    if (lineItems.length > 0 && line.id === 'HP40A') {
+                      console.log(`📋 [${lineName}] 卡片模式排序結果:`, lineItems.map((item, idx) => ({
+                        index: idx,
+                        productName: item.productName,
+                        scheduleDate: item.scheduleDate,
+                        startHour: item.startHour,
+                        displayHour: itemArray[idx].hour,
+                      })));
+                    }
+                  } else {
+                    // 時間軸模式：使用原有的邏輯
+                    lineItems = getLineItemsForDate(line.id).filter(item => !item.isCleaningProcess && !item.isMaintenance);
+                  }
                   
                   const isPreviewLine = dropPreview?.lineId === line.id;
                   const previewHour = isPreviewLine ? dropPreview.hour : null;

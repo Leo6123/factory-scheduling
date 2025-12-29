@@ -129,7 +129,8 @@ export default function DroppableLane({
                 return status;
               })() : null}
             />
-          ))
+            ));
+          })()
         ) : (
           <div className={`text-sm italic transition-colors duration-200
                           ${isOver ? "text-blue-400" : "text-gray-600"}`}>
