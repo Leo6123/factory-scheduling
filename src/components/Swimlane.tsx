@@ -824,58 +824,45 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                   let lineItems: ScheduleItem[] = [];
                   
                   if (viewMode === "card") {
-                    // 卡片模式：使用 getBlocksForDate 來獲取排序後的項目
-                    // 這樣可以確保與 24 小時時間軸的順序一致
+                    // 卡片模式：使用與時間軸相同的邏輯來排序
+                    // 直接使用 getLineItemsForDateRange 獲取項目，然後按照日期和 startHour 排序
                     const dateRange = getDateRange(cardDayRange);
-                    const itemArray: Array<{ item: ScheduleItem; date: string; hour: number }> = [];
-                    const seenItemIds = new Set<string>();
+                    const allItems: ScheduleItem[] = [];
+                    const seenIds = new Set<string>();
                     
-                    // 對每個日期，用 getBlocksForDate 找出該日有顯示的訂單（已按時間排序）
+                    // 收集日期範圍內的所有項目
                     for (const dateStr of dateRange) {
                       const blocks = getBlocksForDate(scheduleItems, line.id, dateStr, lineConfigs);
-                      
                       for (const block of blocks) {
                         // 只取當天開始的區塊（不包含跨日延續的），並過濾清機流程和故障維修
                         if (!block.isCarryOver && !block.item.isCleaningProcess && !block.item.isMaintenance) {
-                          // 避免重複，但保留排序信息
-                          if (!seenItemIds.has(block.item.id)) {
-                            seenItemIds.add(block.item.id);
-                            itemArray.push({
-                              item: block.item,
-                              date: dateStr,
-                              hour: block.displayStartHour, // 使用 displayStartHour（與時間軸一致）
-                            });
+                          if (!seenIds.has(block.item.id)) {
+                            seenIds.add(block.item.id);
+                            allItems.push(block.item);
                           }
                         }
                       }
                     }
                     
-                    // 按照日期和時間排序（與時間軸順序一致）
-                    // 使用與 getBlocksForDate 相同的排序邏輯
-                    itemArray.sort((a, b) => {
+                    // 按照日期和 startHour 排序（與時間軸順序一致）
+                    lineItems = allItems.sort((a, b) => {
                       // 先按日期排序
-                      const dateCompare = a.date.localeCompare(b.date);
-                      if (dateCompare !== 0) {
-                        return dateCompare;
+                      if (a.scheduleDate && b.scheduleDate) {
+                        const dateCompare = a.scheduleDate.localeCompare(b.scheduleDate);
+                        if (dateCompare !== 0) {
+                          return dateCompare;
+                        }
+                      } else if (a.scheduleDate) {
+                        return -1;
+                      } else if (b.scheduleDate) {
+                        return 1;
                       }
                       
-                      // 日期相同時，按 displayStartHour 排序（與時間軸一致）
-                      return a.hour - b.hour;
+                      // 日期相同時，按 startHour 排序
+                      const hourA = a.startHour ?? Infinity;
+                      const hourB = b.startHour ?? Infinity;
+                      return hourA - hourB;
                     });
-                    
-                    // 提取排序後的項目
-                    lineItems = itemArray.map(entry => entry.item);
-                    
-                    // 調試：確認排序結果
-                    if (lineItems.length > 0 && line.id === 'HP40A') {
-                      console.log(`📋 [${lineName}] 卡片模式排序結果:`, lineItems.map((item, idx) => ({
-                        index: idx,
-                        productName: item.productName,
-                        scheduleDate: item.scheduleDate,
-                        startHour: item.startHour,
-                        displayHour: itemArray[idx].hour,
-                      })));
-                    }
                   } else {
                     // 時間軸模式：使用原有的邏輯
                     lineItems = getLineItemsForDate(line.id).filter(item => !item.isCleaningProcess && !item.isMaintenance);
