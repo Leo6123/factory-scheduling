@@ -121,16 +121,9 @@ export default function DroppableLane({
               onTogglePackage={onTogglePackage}
               onQuantityChange={onQuantityChange}
               onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
-              qcStatus={getBatchQCStatus ? (() => {
-                const status = getBatchQCStatus(item.batchNumber);
-                if (status) {
-                  console.log(`📋 卡片 QC 狀態: 批號 "${item.batchNumber}" → ${status}`);
-                }
-                return status;
-              })() : null}
+              qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}
             />
-            ));
-          })()
+          ))
         ) : (
           <div className={`text-sm italic transition-colors duration-200
                           ${isOver ? "text-blue-400" : "text-gray-600"}`}>
