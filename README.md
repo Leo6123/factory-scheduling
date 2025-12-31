@@ -122,6 +122,24 @@ src/
 └── constants/       # 常數定義
 ```
 
+## 開發文檔
+
+### 📚 架構與擴展指南
+
+- **[架構指南](./docs/ARCHITECTURE_GUIDE.md)** - 完整的架構說明與擴展建議
+- **[快速參考](./docs/QUICK_REFERENCE.md)** - 新增功能時的快速檢查清單
+- **[功能範例](./docs/FEATURE_EXAMPLE.md)** - 完整的功能擴展範例
+
+### 🔧 設置文檔
+
+- **[資料庫設置](./docs/SUPABASE_SETUP_STEPS.md)** - Supabase 資料庫設定
+- **[Google Sheets 設置](./docs/GOOGLE_SHEETS_SETUP.md)** - Google Sheets 整合
+- **[部署指南](./DEPLOYMENT.md)** - Vercel 部署說明
+
+### 🐛 故障排除
+
+- **[QC 同步問題](./docs/QC_SYNC_TROUBLESHOOTING.md)** - QC 狀態同步問題排除
+
 ## 授權
 
 私有專案
