@@ -42,6 +42,15 @@ export default function TimelineLane({
   // 計算當天顯示的數量 (只計算非延續的區塊，或按 displayDuration 比例計算)
   const scheduledQuantity = displayBlocks
     .filter((b) => !b.isCarryOver) // 只計算當天開始的訂單
+    .filter((b) => {
+      // NG修色不計入產量
+      if (b.item.materialDescription === "NG修色") return false;
+      // 清機流程不計入產量
+      if (b.item.isCleaningProcess) return false;
+      // 故障維修不計入產量
+      if (b.item.isMaintenance) return false;
+      return true;
+    })
     .reduce((sum, b) => sum + b.item.quantity, 0);
   
   // 計算剩餘產能

@@ -32,7 +32,7 @@ export const mockScheduleItems: ScheduleItem[] = [
     batchNumber: "B2024-004",
     quantity: 2500,
     deliveryDate: "2024-12-27",
-    lineId: "HP40A",
+    lineId: "HP40-1",
   },
   {
     id: "5",

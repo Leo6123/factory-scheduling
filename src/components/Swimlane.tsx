@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -11,7 +11,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { PRODUCTION_LINES, UNSCHEDULED_LANE, CAPACITY_LINES } from "@/constants/productionLines";
+import { PRODUCTION_LINES, UNSCHEDULED_LANE, CAPACITY_LINES, NON_CAPACITY_LINES, MIX_TANK_ALLOWED_LINES } from "@/constants/productionLines";
 import { ScheduleItem, ScheduleBlockDisplay, CLEANING_PROCESS_DURATION } from "@/types/schedule";
 import { LineConfig, DEFAULT_LINE_CONFIGS } from "@/types/productionLine";
 import DroppableLane from "./DroppableLane";
@@ -23,6 +23,8 @@ import MonthSelector from "./MonthSelector";
 import BatchSearch from "./BatchSearch";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useQCStatus } from "@/hooks/useQCStatus";
+import { useSuggestedSchedule } from "@/hooks/useSuggestedSchedule";
+import { supabase, TABLES } from "@/lib/supabase";
 
 interface SwimlaneProps {
   initialItems: ScheduleItem[];
@@ -63,6 +65,13 @@ function getBlocksForDate(
       totalDuration = config && config.avgOutput > 0 
         ? item.quantity / config.avgOutput 
         : 1;
+    }
+    
+    // 2押或3押：時長乘以倍數（KG不變）
+    if (item.is3Press) {
+      totalDuration = totalDuration * 3;
+    } else if (item.is2Press) {
+      totalDuration = totalDuration * 2;
     }
     
     // 計算此訂單的結束時間 (以開始日期的小時為基準)
@@ -128,6 +137,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     isSaving,
     updateItems: saveScheduleItems,
     deleteItem: deleteScheduleItem,
+    loadData: reloadScheduleData,
   } = useScheduleData(initialItems);
 
   // 本地狀態管理（用於即時更新 UI）
@@ -135,12 +145,24 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   const [history, setHistory] = useState<ScheduleItem[][]>([]); // 歷史記錄 (用於回上一步)
 
   // 同步資料庫資料到本地狀態
+  const [isDeleting, setIsDeleting] = useState(false); // 標記是否正在刪除，避免刪除時被同步覆蓋
+  const [isImporting, setIsImporting] = useState(false); // 標記是否正在匯入，避免匯入時被同步覆蓋
   useEffect(() => {
-    if (!isDataLoading) {
+    if (!isDataLoading && !isDeleting && !isImporting) {
       // 優先使用資料庫的資料，確保是陣列
-      setLocalItems(Array.isArray(dbItems) ? dbItems : []);
+      // 但如果在刪除或匯入過程中，不要同步（避免覆蓋本地狀態）
+      // 只有在 dbItems 和 localItems 不同時才同步，避免不必要的更新
+      setLocalItems((prev) => {
+        const dbItemsArray = Array.isArray(dbItems) ? dbItems : [];
+        // 如果 dbItems 和 prev 相同，不更新（避免不必要的重新渲染）
+        if (dbItemsArray.length === prev.length && 
+            dbItemsArray.every((item, index) => item.id === prev[index]?.id)) {
+          return prev;
+        }
+        return dbItemsArray;
+      });
     }
-  }, [dbItems, isDataLoading]);
+  }, [dbItems, isDataLoading, isDeleting, isImporting]);
 
   // 包裝的更新函數：先更新本地狀態，然後非同步儲存到資料庫
   const setScheduleItems = (updater: ScheduleItem[] | ((prev: ScheduleItem[]) => ScheduleItem[])) => {
@@ -157,7 +179,23 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 使用本地狀態進行渲染（確保 UI 即時更新）
   const scheduleItems = localItems;
   const [activeItem, setActiveItem] = useState<ScheduleItem | null>(null);
+  // 從 localStorage 載入產線設定（只在客戶端）
   const [lineConfigs, setLineConfigs] = useState<Record<string, LineConfig>>(DEFAULT_LINE_CONFIGS);
+  
+  // 在客戶端載入保存的設定
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = localStorage.getItem('factory_line_configs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // 合併保存的設定和預設設定，確保所有產線都有設定
+        setLineConfigs({ ...DEFAULT_LINE_CONFIGS, ...parsed });
+      }
+    } catch (error) {
+      console.error('載入產線設定失敗:', error);
+    }
+  }, []);
   const [viewMode, setViewMode] = useState<"card" | "timeline">("timeline");
   const [dropPreview, setDropPreview] = useState<{ lineId: string; hour: number } | null>(null);
   const [cardDayRange, setCardDayRange] = useState<1 | 3 | 5 | 7>(3); // 卡片模式的日期範圍
@@ -168,6 +206,20 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
   const { getBatchQCStatus, qcData, isLoading: isQCLoading, error: qcError } = useQCStatus(scheduleItems, googleSheetId, googleApiKey);
   
+  // 建議排程
+  const { getSuggestedSchedule, importSchedules } = useSuggestedSchedule();
+  
+  // 載入存檔
+  const handleLoadSnapshot = useCallback((items: ScheduleItem[], configs: Record<string, LineConfig>) => {
+    saveHistory();
+    setScheduleItems(items);
+    setLineConfigs(configs);
+    // 同時保存到資料庫
+    saveScheduleItems(items).catch((err) => {
+      console.error('載入存檔後保存到資料庫失敗:', err);
+    });
+  }, [saveScheduleItems]);
+
   // 除錯：顯示 QC 狀態資訊
   useEffect(() => {
     if (googleSheetId) {
@@ -181,6 +233,48 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       console.warn('⚠️ Google Sheet ID 未設定，請在 .env.local 中設定 NEXT_PUBLIC_GOOGLE_SHEET_ID');
     }
   }, [googleSheetId, qcData.length, isQCLoading, qcError]);
+
+  // 應用啟動時檢查是否有存檔
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const checkSnapshot = () => {
+      try {
+        const snapshot = localStorage.getItem('factory_schedule_snapshot');
+        return !!snapshot;
+      } catch {
+        return false;
+      }
+    };
+
+    // 只在首次載入時檢查（避免重複提示）
+    const hasChecked = sessionStorage.getItem('has_checked_snapshot');
+    if (!hasChecked && checkSnapshot()) {
+      sessionStorage.setItem('has_checked_snapshot', 'true');
+      
+      // 延遲提示，確保頁面已載入
+      setTimeout(() => {
+        if (window.confirm('📦 偵測到有存檔，是否要載入存檔？\n\n點擊「確定」載入存檔，點擊「取消」繼續使用目前排程。')) {
+          try {
+            const snapshotData = localStorage.getItem('factory_schedule_snapshot');
+            const configsData = localStorage.getItem('factory_line_configs_snapshot');
+            
+            if (snapshotData) {
+              const items: ScheduleItem[] = JSON.parse(snapshotData);
+              const configs: Record<string, LineConfig> = configsData 
+                ? JSON.parse(configsData)
+                : {};
+              
+              handleLoadSnapshot(items, configs);
+            }
+          } catch (error) {
+            console.error('載入存檔失敗:', error);
+            alert('❌ 載入存檔失敗');
+          }
+        }
+      }, 500);
+    }
+  }, [handleLoadSnapshot]); // 依賴 handleLoadSnapshot
   
   // 月份選擇狀態
   const now = new Date();
@@ -239,19 +333,28 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     const item = scheduleItems.find((i) => i.id === itemId);
     if (!item) return 1;
     
+    let duration: number;
+    
     // 清機流程：分鐘轉小時
     if (item.isCleaningProcess && item.cleaningType) {
-      return CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
+      duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
+    } else if (item.isMaintenance && item.maintenanceHours) {
+      // 故障維修：使用 maintenanceHours
+      duration = item.maintenanceHours;
+    } else {
+      const config = lineConfigs[targetLineId];
+      if (!config || config.avgOutput <= 0) return 1;
+      duration = item.quantity / config.avgOutput;
     }
     
-    // 故障維修：使用 maintenanceHours
-    if (item.isMaintenance && item.maintenanceHours) {
-      return item.maintenanceHours;
+    // 2押或3押：時長乘以倍數（KG不變）
+    if (item.is3Press) {
+      duration = duration * 3;
+    } else if (item.is2Press) {
+      duration = duration * 2;
     }
     
-    const config = lineConfigs[targetLineId];
-    if (!config || config.avgOutput <= 0) return 1;
-    return item.quantity / config.avgOutput;
+    return duration;
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -308,14 +411,89 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     // 處理垃圾桶刪除
     if (targetLineId === "TRASH") {
       const draggedItem = scheduleItems.find((i) => i.id === draggedItemId);
-      if (draggedItem && window.confirm(`確定要刪除「${draggedItem.batchNumber}」嗎？`)) {
-        saveHistory();
-        // 從本地狀態移除
-        setScheduleItems((prev) => prev.filter((item) => item.id !== draggedItemId));
-        // 從資料庫刪除
-        deleteScheduleItem(draggedItemId).catch((err) => {
-          console.error('刪除失敗:', err);
-        });
+      if (draggedItem) {
+        // 構建更詳細的確認訊息
+        let confirmMessage = `確定要刪除此卡片嗎？\n\n`;
+        if (draggedItem.materialDescription) {
+          confirmMessage += `類型：${draggedItem.materialDescription}\n`;
+        }
+        confirmMessage += `產品：${draggedItem.productName}\n`;
+        confirmMessage += `批號：${draggedItem.batchNumber}\n`;
+        if (draggedItem.quantity) {
+          confirmMessage += `數量：${draggedItem.quantity} KG`;
+        }
+        
+        if (window.confirm(confirmMessage)) {
+          saveHistory();
+          // 標記正在刪除，避免 useEffect 同步覆蓋
+          setIsDeleting(true);
+          
+          // 先更新本地狀態（立即更新 UI）
+          const filteredItems = scheduleItems.filter((item) => item.id !== draggedItemId);
+          setLocalItems(filteredItems);
+          
+          // 同時更新 localStorage
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('factory_schedule_items', JSON.stringify(filteredItems));
+            } catch (err) {
+              console.error('更新 localStorage 失敗:', err);
+            }
+          }
+          
+          // 直接從資料庫刪除，然後重新載入資料以確保同步
+          (async () => {
+            try {
+              let deleteSuccess = false;
+              if (supabase) {
+                const { error } = await supabase
+                  .from(TABLES.SCHEDULE_ITEMS)
+                  .delete()
+                  .eq('id', draggedItemId);
+                if (error) {
+                  console.error('刪除失敗:', error);
+                  alert('刪除失敗，請檢查網路連線');
+                } else {
+                  deleteSuccess = true;
+                }
+              } else {
+                // 如果沒有 Supabase，直接標記為成功（使用 localStorage）
+                deleteSuccess = true;
+              }
+              
+              if (deleteSuccess) {
+                console.log(`✅ 成功刪除卡片: ${draggedItemId}`);
+                // 重新載入資料以確保 dbItems 同步
+                if (reloadScheduleData) {
+                  try {
+                    await reloadScheduleData();
+                    // 重新載入完成後，再重置標記
+                    setIsDeleting(false);
+                  } catch (reloadErr) {
+                    console.error('重新載入資料失敗:', reloadErr);
+                    // 即使重新載入失敗，也重置標記（因為刪除已成功）
+                    setIsDeleting(false);
+                  }
+                } else {
+                  // 如果沒有重新載入函數，延遲重置標記
+                  setTimeout(() => {
+                    setIsDeleting(false);
+                  }, 500);
+                }
+              } else {
+                // 刪除失敗時，恢復本地狀態
+                setLocalItems(scheduleItems);
+                setIsDeleting(false);
+              }
+            } catch (err) {
+              console.error('刪除失敗:', err);
+              alert('刪除失敗，請檢查控制台錯誤訊息');
+              // 刪除失敗時，恢復本地狀態
+              setLocalItems(scheduleItems);
+              setIsDeleting(false);
+            }
+          })();
+        }
       }
       return;
     }
@@ -332,6 +510,38 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
 
     const draggedItem = scheduleItems.find((i) => i.id === draggedItemId);
     if (!draggedItem) return;
+
+    // 混合缸卡片只能排到指定的產線
+    if (draggedItem.materialDescription === "混合缸排程") {
+      // 允許退回未排程區
+      if (targetLineId === UNSCHEDULED_LANE.id) {
+        // 允許，繼續執行
+      } else if (!MIX_TANK_ALLOWED_LINES.includes(targetLineId as typeof MIX_TANK_ALLOWED_LINES[number])) {
+        // 不允許的產線，提示並阻止
+        const targetLine = PRODUCTION_LINES.find(line => line.id === targetLineId);
+        const allowedLineNames = MIX_TANK_ALLOWED_LINES.map(id => {
+          const line = PRODUCTION_LINES.find(l => l.id === id);
+          return line?.name || id;
+        }).join("、");
+        alert(`混合缸卡片只能排到以下產線：${allowedLineNames}\n\n無法排到「${targetLine?.name || targetLineId}」`);
+        return;
+      }
+    }
+
+    // 生產排程卡片不能排到混合缸專用產線（故障維修卡片除外）
+    if (draggedItem.materialDescription !== "混合缸排程" && 
+        !draggedItem.isMaintenance &&
+        targetLineId !== UNSCHEDULED_LANE.id &&
+        MIX_TANK_ALLOWED_LINES.includes(targetLineId as typeof MIX_TANK_ALLOWED_LINES[number])) {
+      // 不允許的產線，提示並阻止
+      const targetLine = PRODUCTION_LINES.find(line => line.id === targetLineId);
+      const restrictedLineNames = MIX_TANK_ALLOWED_LINES.map(id => {
+        const line = PRODUCTION_LINES.find(l => l.id === id);
+        return line?.name || id;
+      }).join("、");
+      alert(`生產排程卡片不能排到以下產線：${restrictedLineNames}\n\n這些產線僅供混合缸卡片和故障維修使用\n\n無法排到「${targetLine?.name || targetLineId}」`);
+      return;
+    }
 
     let dropHour: number | undefined = undefined;
 
@@ -363,6 +573,13 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
         ? draggedItem.quantity / config.avgOutput 
         : 1;
     }
+    
+    // 2押或3押：時長乘以倍數（KG不變）
+    if (draggedItem.is3Press) {
+      draggedDuration = draggedDuration * 3;
+    } else if (draggedItem.is2Press) {
+      draggedDuration = draggedDuration * 2;
+    }
 
     saveHistory();
     setScheduleItems((prev) => {
@@ -387,20 +604,60 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   };
 
   const handleImport = async (importedItems: ScheduleItem[]) => {
+    if (!importedItems || importedItems.length === 0) {
+      console.warn('沒有可匯入的項目');
+      return;
+    }
+    
     saveHistory();
     
-    // 使用 setScheduleItems 更新（會自動儲存到 Supabase）
-    const newItems = [...localItems, ...importedItems];
-    setLocalItems(newItems);
+    // 標記正在匯入，避免 useEffect 同步覆蓋
+    setIsImporting(true);
     
-    // 明確儲存到資料庫（確保資料持久化）
     try {
-      await saveScheduleItems(newItems);
-      console.log(`✅ 成功匯入 ${importedItems.length} 筆資料並儲存到 Supabase`);
+      // 使用函數式更新確保獲取最新的 localItems
+      let newItems: ScheduleItem[] = [];
+      setLocalItems((prevItems) => {
+        // 合併現有項目和匯入的項目（避免重複批號）
+        const existingBatchIds = new Set(prevItems.map(item => item.batchNumber));
+        newItems = [
+          ...prevItems,
+          ...importedItems.filter(item => !existingBatchIds.has(item.batchNumber))
+        ];
+        
+        // 同時更新 localStorage
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('factory_schedule_items', JSON.stringify(newItems));
+          } catch (err) {
+            console.error('更新 localStorage 失敗:', err);
+          }
+        }
+        
+        return newItems;
+      });
+      
+      // 明確儲存到資料庫（確保資料持久化）
+      // 注意：由於 setLocalItems 是異步的，我們需要等待一下確保 newItems 已設置
+      // 但實際上，由於我們在 setLocalItems 的回調中設置了 newItems，它應該已經可用
+      if (newItems.length > 0) {
+        try {
+          await saveScheduleItems(newItems);
+          console.log(`✅ 成功匯入 ${importedItems.length} 筆資料並儲存到 Supabase`);
+        } catch (err) {
+          console.error('❌ 匯入資料儲存失敗:', err);
+          console.warn('⚠️ 匯入資料儲存到 Supabase 失敗，但已儲存到本地 localStorage');
+          // 即使 Supabase 儲存失敗，資料仍會存在 localStorage 中
+        }
+      } else {
+        console.warn('沒有新項目需要保存');
+      }
     } catch (err) {
-      console.error('❌ 匯入資料儲存失敗:', err);
-      console.warn('⚠️ 匯入資料儲存到 Supabase 失敗，但已儲存到本地 localStorage');
-      // 即使 Supabase 儲存失敗，資料仍會存在 localStorage 中
+      console.error('❌ 匯入失敗:', err);
+      alert('匯入失敗，請檢查控制台錯誤訊息');
+    } finally {
+      // 匯入完成後，重置標記
+      setIsImporting(false);
     }
   };
 
@@ -415,10 +672,21 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   };
 
   const handleConfigUpdate = (lineId: string, avgOutput: number) => {
-    setLineConfigs((prev) => ({
-      ...prev,
-      [lineId]: { ...prev[lineId], avgOutput },
-    }));
+    setLineConfigs((prev) => {
+      const updated = {
+        ...prev,
+        [lineId]: { ...prev[lineId], avgOutput },
+      };
+      // 保存到 localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('factory_line_configs', JSON.stringify(updated));
+        } catch (error) {
+          console.error('保存產線設定失敗:', error);
+        }
+      }
+      return updated;
+    });
   };
 
   // 切換結晶狀態
@@ -481,6 +749,34 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     );
   };
 
+  // 切換2押狀態（與3押互斥）
+  const handleToggle2Press = (itemId: string) => {
+    saveHistory();
+    setScheduleItems((prev) =>
+      prev.map((item) => {
+        if (item.id === itemId) {
+          // 如果勾選2押，取消3押；如果取消2押，保持3押不變
+          return { ...item, is2Press: !item.is2Press, is3Press: item.is2Press ? false : item.is3Press };
+        }
+        return item;
+      })
+    );
+  };
+
+  // 切換3押狀態（與2押互斥）
+  const handleToggle3Press = (itemId: string) => {
+    saveHistory();
+    setScheduleItems((prev) =>
+      prev.map((item) => {
+        if (item.id === itemId) {
+          // 如果勾選3押，取消2押；如果取消3押，保持2押不變
+          return { ...item, is3Press: !item.is3Press, is2Press: item.is3Press ? false : item.is2Press };
+        }
+        return item;
+      })
+    );
+  };
+
   // 更改數量
   const handleQuantityChange = (itemId: string, newQuantity: number) => {
     saveHistory();
@@ -491,6 +787,55 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           : item
       )
     );
+  };
+
+  // 更改齊料時間
+  const handleMaterialReadyDateChange = (itemId: string, newDate: string) => {
+    saveHistory();
+    const updatedItem = scheduleItems.find((i) => i.id === itemId);
+    if (!updatedItem) return;
+
+    // 如果是混合缸卡片，同步到所有相同批號的卡片
+    const shouldSync = updatedItem.materialDescription === "混合缸排程";
+    
+    // 更新狀態並保存到資料庫
+    setScheduleItems((prev) => {
+      const newItems = prev.map((item) => {
+        if (item.id === itemId) {
+          // 更新當前卡片
+          return { ...item, materialReadyDate: newDate || undefined };
+        } else if (shouldSync && item.batchNumber === updatedItem.batchNumber) {
+          // 混合缸卡片：同步到所有相同批號的卡片
+          console.log('🔄 同步齊料時間:', {
+            from: updatedItem.batchNumber,
+            to: item.batchNumber,
+            itemId: item.id,
+            productName: item.productName,
+            newDate
+          });
+          return { ...item, materialReadyDate: newDate || undefined };
+        }
+        return item;
+      });
+      
+      if (shouldSync) {
+        const syncedCount = newItems.filter(
+          (item) => item.batchNumber === updatedItem.batchNumber && item.id !== itemId
+        ).length;
+        console.log('✅ 混合缸齊料時間同步完成:', {
+          batchNumber: updatedItem.batchNumber,
+          syncedCount,
+          newDate
+        });
+      }
+      
+      // 保存到資料庫（使用更新後的狀態）
+      saveScheduleItems(newItems).catch((err) => {
+        console.error('保存齊料時間失敗:', err);
+      });
+      
+      return newItems;
+    });
   };
 
   // 更改維修時長
@@ -630,12 +975,20 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   const totalScheduledThisMonth = scheduleItems
     .filter((item) => {
       if (item.lineId === UNSCHEDULED_LANE.id || !item.scheduleDate) return false;
+      // NG修色不計入產量
+      if (item.materialDescription === "NG修色") return false;
+      // 清機流程不計入產量
+      if (item.isCleaningProcess) return false;
+      // 故障維修不計入產量
+      if (item.isMaintenance) return false;
+      // 不計入產量與排程的產線不計入統計
+      if (NON_CAPACITY_LINES.includes(item.lineId as typeof NON_CAPACITY_LINES[number])) return false;
       const [y, m] = item.scheduleDate.split("-").map(Number);
       return y === selectedYear && m === selectedMonth;
     })
     .reduce((sum, item) => sum + item.quantity, 0);
 
-  // 計算選擇日期當天 24 小時內可完成的數量
+  // 計算選擇日期當天 24 小時內可完成的數量（根據時長和產能計算）
   const totalScheduledToday = useMemo(() => {
     if (!selectedDateStr) return 0;
     
@@ -644,11 +997,16 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       const blocks = getBlocksForDate(scheduleItems, line.id, selectedDateStr, lineConfigs);
       const config = lineConfigs[line.id];
       
+      // 不計入產量與排程的產線不計入統計
+      if (NON_CAPACITY_LINES.includes(line.id as typeof NON_CAPACITY_LINES[number])) continue;
+      
       for (const block of blocks) {
         // 清機流程不計入 KG
         if (block.item.isCleaningProcess) continue;
         // 故障維修不計入 KG
         if (block.item.isMaintenance) continue;
+        // NG修色不計入產量
+        if (block.item.materialDescription === "NG修色") continue;
         // 異常未完成不計入 KG
         if (block.item.isAbnormalIncomplete) continue;
         
@@ -665,6 +1023,44 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       }
     }
     return Math.round(total);
+  }, [scheduleItems, selectedDateStr, lineConfigs]);
+
+  // 計算當日完成產量（直接使用卡片上的數量，不根據時長計算）
+  const totalCompletedToday = useMemo(() => {
+    if (!selectedDateStr) return 0;
+    
+    // 收集當日已排程的項目ID（避免跨日項目重複計算）
+    const processedItemIds = new Set<string>();
+    let total = 0;
+    
+    for (const line of PRODUCTION_LINES) {
+      // 不計入產量與排程的產線不計入統計
+      if (NON_CAPACITY_LINES.includes(line.id as typeof NON_CAPACITY_LINES[number])) continue;
+      
+      const blocks = getBlocksForDate(scheduleItems, line.id, selectedDateStr, lineConfigs);
+      
+      for (const block of blocks) {
+        // 只計算當天開始的項目（不計算跨日延續的部分）
+        if (block.isCarryOver) continue;
+        
+        // 避免重複計算（同一個項目可能在不同產線或不同區塊中）
+        if (processedItemIds.has(block.item.id)) continue;
+        processedItemIds.add(block.item.id);
+        
+        // 清機流程不計入 KG
+        if (block.item.isCleaningProcess) continue;
+        // 故障維修不計入 KG
+        if (block.item.isMaintenance) continue;
+        // NG修色不計入產量
+        if (block.item.materialDescription === "NG修色") continue;
+        // 異常未完成不計入 KG
+        if (block.item.isAbnormalIncomplete) continue;
+        
+        // 直接使用卡片上的數量
+        total += block.item.quantity;
+      }
+    }
+    return total;
   }, [scheduleItems, selectedDateStr, lineConfigs]);
 
   return (
@@ -690,7 +1086,10 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           onToggleCCD={handleToggleCCD}
           onToggleDryblending={handleToggleDryblending}
           onTogglePackage={handleTogglePackage}
+          onToggle2Press={handleToggle2Press}
+          onToggle3Press={handleToggle3Press}
           onQuantityChange={handleQuantityChange}
+          onMaterialReadyDateChange={handleMaterialReadyDateChange}
           onToggleAbnormalIncomplete={handleToggleAbnormalIncomplete}
           isDragging={activeItem !== null}
           onAddItem={handleAddItem}
@@ -698,6 +1097,9 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           canUndo={history.length > 0}
           getBatchQCStatus={getBatchQCStatus}
           scheduledItemOrder={scheduledItemOrder}
+          onLoadSnapshot={handleLoadSnapshot}
+          getSuggestedSchedule={getSuggestedSchedule}
+          onImportSuggestedSchedule={importSchedules}
         />
 
         {/* 右側：產線區域 */}
@@ -779,20 +1181,25 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
             </div>
 
             {/* 產能摘要 */}
-            <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-4 text-xs" suppressHydrationWarning>
               <div className="text-gray-400">
-                月產能: <span className="text-white font-medium">{totalCapacity.toLocaleString()}</span> KG
+                月總產能: <span className="text-white font-medium" suppressHydrationWarning>{totalCapacity.toLocaleString()}</span> KG
               </div>
               <div className="text-gray-400">
-                月排程: <span className="text-emerald-400 font-medium">{totalScheduledThisMonth.toLocaleString()}</span> KG
+                月已排程: <span className="text-emerald-400 font-medium" suppressHydrationWarning>{totalScheduledThisMonth.toLocaleString()}</span> KG
               </div>
               {selectedDay && (
-                <div className="text-gray-400">
-                  當日: <span className="text-yellow-400 font-medium">{totalScheduledToday.toLocaleString()}</span> KG
-                </div>
+                <>
+                  <div className="text-gray-400">
+                    當日已排產能: <span className="text-yellow-400 font-medium" suppressHydrationWarning>{totalScheduledToday.toLocaleString()}</span> KG
+                  </div>
+                  <div className="text-gray-400">
+                    當日完成產量: <span className="text-orange-400 font-medium" suppressHydrationWarning>{totalCompletedToday.toLocaleString()}</span> KG
+                  </div>
+                </>
               )}
               <div className={`${totalCapacity - totalScheduledThisMonth >= 0 ? "text-cyan-400" : "text-red-400"}`}>
-                月剩餘: <span className="font-medium">{(totalCapacity - totalScheduledThisMonth).toLocaleString()}</span> KG
+                月剩餘: <span className="font-medium" suppressHydrationWarning>{(totalCapacity - totalScheduledThisMonth).toLocaleString()}</span> KG
               </div>
             </div>
           </div>
@@ -883,7 +1290,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                         lineName={line.name}
                         color={line.color}
                         displayBlocks={displayBlocks}
-                        config={lineConfigs[line.id]}
+                        config={lineConfigs[line.id] || DEFAULT_LINE_CONFIGS[line.id] || { id: line.id, avgOutput: 100 }}
                         onConfigUpdate={handleConfigUpdate}
                         totalHours={totalHours}
                         dropPreviewHour={previewHour}
@@ -902,14 +1309,17 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                       lineName={line.name}
                       color={line.color}
                       items={lineItems}
-                      config={lineConfigs[line.id]}
+                      config={lineConfigs[line.id] || DEFAULT_LINE_CONFIGS[line.id] || { id: line.id, avgOutput: 100 }}
                       onConfigUpdate={handleConfigUpdate}
                       monthlyCapacity={monthlyCapacity}
                       onToggleCrystallization={handleToggleCrystallization}
                       onToggleCCD={handleToggleCCD}
                       onToggleDryblending={handleToggleDryblending}
                       onTogglePackage={handleTogglePackage}
+                      onToggle2Press={handleToggle2Press}
+                      onToggle3Press={handleToggle3Press}
                       onQuantityChange={handleQuantityChange}
+                      onMaterialReadyDateChange={handleMaterialReadyDateChange}
                       onToggleAbnormalIncomplete={handleToggleAbnormalIncomplete}
                       getBatchQCStatus={getBatchQCStatus}
                     />
@@ -963,6 +1373,14 @@ function resolveCollisions(
           ? item.quantity / config.avgOutput 
           : 1;
       }
+      
+      // 2押或3押：時長乘以倍數（KG不變）
+      if (item.is3Press) {
+        duration = duration * 3;
+      } else if (item.is2Press) {
+        duration = duration * 2;
+      }
+      
       return { ...item, duration };
     })
     .sort((a, b) => (a.startHour ?? 0) - (b.startHour ?? 0));

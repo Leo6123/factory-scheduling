@@ -242,13 +242,13 @@ export default function ExportExcelButton({
       <button
         onClick={() => setIsOpen(true)}
         disabled={scheduledCount === 0}
-        className={`w-full px-3 py-2 text-sm font-medium rounded-lg flex items-center gap-2
+        className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 whitespace-nowrap
                     transition-colors
                     ${scheduledCount > 0
                       ? "bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-600/30"
                       : "bg-gray-700/50 text-gray-500 border border-gray-600/30 cursor-not-allowed"}`}
       >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                 d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>

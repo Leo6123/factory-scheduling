@@ -17,12 +17,13 @@ export const supabase = supabaseUrl && supabaseAnonKey
 export const TABLES = {
   SCHEDULE_ITEMS: 'schedule_items',
   LINE_CONFIGS: 'line_configs',
+  SUGGESTED_SCHEDULES: 'suggested_schedules',
 } as const;
 
 // 將 ScheduleItem 轉換為資料庫格式
-export function scheduleItemToDB(item: ScheduleItem) {
+export function scheduleItemToDB(item: ScheduleItem, includeMaterialReadyDate: boolean = true, includeRecipeItems: boolean = true) {
   // 不包含 updated_at，讓資料庫觸發器自動處理
-  return {
+  const dbItem: any = {
     id: item.id,
     product_name: item.productName,
     material_description: item.materialDescription || null,
@@ -46,6 +47,18 @@ export function scheduleItemToDB(item: ScheduleItem) {
     sales_document: item.salesDocument || null,
     // updated_at 由資料庫觸發器自動處理，不需要手動設定
   };
+  
+  // 只有在有值且允許時才包含 material_ready_date（避免資料庫欄位不存在時出錯）
+  if (includeMaterialReadyDate && item.materialReadyDate) {
+    dbItem.material_ready_date = item.materialReadyDate;
+  }
+  
+  // 配方資料（JSONB 格式，只有在有值且允許時才包含，避免資料庫欄位不存在時出錯）
+  if (includeRecipeItems && item.recipeItems && item.recipeItems.length > 0) {
+    dbItem.recipe_items = item.recipeItems;
+  }
+  
+  return dbItem;
 }
 
 // 將資料庫格式轉換為 ScheduleItem
@@ -57,6 +70,7 @@ export function dbToScheduleItem(row: any): ScheduleItem {
     batchNumber: row.batch_number,
     quantity: row.quantity,
     deliveryDate: row.delivery_date,
+    materialReadyDate: row.material_ready_date || undefined,
     lineId: row.line_id,
     scheduleDate: row.schedule_date || undefined,
     startHour: row.start_hour ?? undefined,
@@ -72,6 +86,19 @@ export function dbToScheduleItem(row: any): ScheduleItem {
     processOrder: row.process_order || undefined,
     customer: row.customer || undefined,
     salesDocument: row.sales_document || undefined,
+    recipeItems: row.recipe_items 
+      ? (Array.isArray(row.recipe_items) 
+          ? row.recipe_items 
+          : (typeof row.recipe_items === 'string' 
+            ? (() => {
+                try {
+                  return JSON.parse(row.recipe_items);
+                } catch {
+                  return undefined;
+                }
+              })()
+            : undefined))
+      : undefined,
   };
 }
 

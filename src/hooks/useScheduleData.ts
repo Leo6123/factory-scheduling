@@ -70,12 +70,40 @@ async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<boolean> {
   }
 
   try {
-    // 使用 upsert 更新或插入所有項目
-    const dbItems = items.map(scheduleItemToDB);
+    // 先嘗試包含所有欄位（material_ready_date 和 recipe_items）
+    let dbItems = items.map(item => scheduleItemToDB(item, true, true));
     
-    const { error } = await supabase
+    let { error } = await supabase
       .from(TABLES.SCHEDULE_ITEMS)
       .upsert(dbItems, { onConflict: 'id' });
+
+    // 如果錯誤是因為 material_ready_date 或 recipe_items 欄位不存在，則重試不包含該欄位
+    if (error && error.message) {
+      let retryWithoutMaterialReadyDate = false;
+      let retryWithoutRecipeItems = false;
+      
+      if (error.message.includes('material_ready_date')) {
+        console.warn('資料庫沒有 material_ready_date 欄位，嘗試不包含該欄位保存');
+        retryWithoutMaterialReadyDate = true;
+      }
+      
+      if (error.message.includes('recipe_items')) {
+        console.warn('資料庫沒有 recipe_items 欄位，嘗試不包含該欄位保存');
+        retryWithoutRecipeItems = true;
+      }
+      
+      if (retryWithoutMaterialReadyDate || retryWithoutRecipeItems) {
+        dbItems = items.map(item => scheduleItemToDB(
+          item, 
+          !retryWithoutMaterialReadyDate,  // includeMaterialReadyDate
+          !retryWithoutRecipeItems        // includeRecipeItems
+        ));
+        
+        ({ error } = await supabase
+          .from(TABLES.SCHEDULE_ITEMS)
+          .upsert(dbItems, { onConflict: 'id' }));
+      }
+    }
 
     if (error) {
       console.error('儲存排程項目失敗:', error);
@@ -149,12 +177,17 @@ export function useScheduleData(initialItems: ScheduleItem[] = []) {
     try {
       const success = await saveScheduleItemsToDB(newItems);
       if (success) {
+        // 只有成功時才更新 dbItems，避免失敗時觸發同步覆蓋本地狀態
         setItems(newItems);
       } else {
         setError('儲存失敗，請檢查網路連線');
+        // 儲存失敗時，不更新 dbItems，避免觸發同步覆蓋本地狀態
+        console.warn('儲存失敗，保留本地狀態');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '儲存資料失敗');
+      // 儲存失敗時，不更新 dbItems，避免觸發同步覆蓋本地狀態
+      console.warn('儲存異常，保留本地狀態:', err);
     } finally {
       setIsSaving(false);
     }

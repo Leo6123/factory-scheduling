@@ -8,8 +8,11 @@ import ImportExcelButton from "./ImportExcelButton";
 import ClearButton from "./ClearButton";
 import AddNGColorForm from "./AddNGColorForm";
 import ExportExcelButton from "./ExportExcelButton";
+import SaveSnapshotButton from "./SaveSnapshotButton";
 import CleaningProcessForm from "./CleaningProcessForm";
 import MaintenanceForm from "./MaintenanceForm";
+import MixTankForm from "./MixTankForm";
+import ImportSuggestedScheduleButton from "./ImportSuggestedScheduleButton";
 
 interface UnscheduledSidebarProps {
   items: ScheduleItem[];
@@ -25,7 +28,10 @@ interface UnscheduledSidebarProps {
   onToggleCCD?: (itemId: string) => void;  // 切換 CCD 狀態
   onToggleDryblending?: (itemId: string) => void;  // 切換 Dryblending 狀態
   onTogglePackage?: (itemId: string) => void;  // 切換 Package 狀態
+  onToggle2Press?: (itemId: string) => void;  // 切換 2押 狀態
+  onToggle3Press?: (itemId: string) => void;  // 切換 3押 狀態
   onQuantityChange?: (itemId: string, newQuantity: number) => void;  // 更改數量
+  onMaterialReadyDateChange?: (itemId: string, newDate: string) => void;  // 更改齊料時間
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
   isDragging?: boolean;  // 是否正在拖曳
   onAddItem?: (item: ScheduleItem) => void;  // 新增單一項目
@@ -33,6 +39,9 @@ interface UnscheduledSidebarProps {
   canUndo?: boolean;    // 是否可以回上一步
   getBatchQCStatus?: (batchNumber: string) => 'QC中' | 'QC完成' | 'NG' | null;  // 取得 QC 狀態
   scheduledItemOrder?: string[];  // 已排程卡片的順序 (productName 陣列)
+  onLoadSnapshot?: (items: ScheduleItem[], configs: Record<string, LineConfig>) => void;  // 載入存檔
+  getSuggestedSchedule?: (materialNumber: string) => string[] | null;  // 取得建議排程
+  onImportSuggestedSchedule?: (schedules: any[]) => Promise<boolean>;  // 匯入建議排程
 }
 
 export default function UnscheduledSidebar({
@@ -49,7 +58,10 @@ export default function UnscheduledSidebar({
   onToggleCCD,
   onToggleDryblending,
   onTogglePackage,
+  onToggle2Press,
+  onToggle3Press,
   onQuantityChange,
+  onMaterialReadyDateChange,
   onToggleAbnormalIncomplete,
   isDragging = false,
   onAddItem,
@@ -57,6 +69,9 @@ export default function UnscheduledSidebar({
   canUndo = false,
   getBatchQCStatus,
   scheduledItemOrder = [],
+  onLoadSnapshot,
+  getSuggestedSchedule,
+  onImportSuggestedSchedule,
 }: UnscheduledSidebarProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: "UNSCHEDULED",
@@ -79,12 +94,21 @@ export default function UnscheduledSidebar({
           </span>
         </div>
         
-        {/* 操作按鈕 */}
-        <div className="flex flex-col gap-2">
+        {/* 操作按鈕 - 一行橫向排列 */}
+        <div className="flex flex-wrap gap-1.5">
           <ImportExcelButton 
             onImport={onImport} 
             existingBatchIds={existingBatchIds}
           />
+          
+          {/* 混合缸新增表單 */}
+          {onAddItem && (
+            <MixTankForm 
+              onAdd={onAddItem} 
+              existingBatchIds={existingBatchIds}
+              allScheduleItems={allScheduleItems}
+            />
+          )}
           
           {/* NG修色新增表單 */}
           {onAddItem && (
@@ -109,13 +133,13 @@ export default function UnscheduledSidebar({
             <button
               onClick={onUndo}
               disabled={!canUndo}
-              className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
-                         transition-all duration-200
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs
+                         transition-all duration-200 whitespace-nowrap
                          ${canUndo
                            ? "bg-purple-600 hover:bg-purple-500 active:scale-95"
                            : "bg-gray-700 text-gray-500 cursor-not-allowed"}`}
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                       d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
               </svg>
@@ -132,6 +156,18 @@ export default function UnscheduledSidebar({
             selectedYear={selectedYear}
             selectedMonth={selectedMonth}
           />
+          
+          {/* 存檔功能 */}
+          <SaveSnapshotButton
+            scheduleItems={allScheduleItems}
+            lineConfigs={lineConfigs}
+            onLoadSnapshot={onLoadSnapshot}
+          />
+          
+          {/* 匯入建議排程 */}
+          {onImportSuggestedSchedule && (
+            <ImportSuggestedScheduleButton onImport={onImportSuggestedSchedule} />
+          )}
           
           {/* 垃圾桶 - 拖曳時顯示 */}
           <div
@@ -172,8 +208,21 @@ export default function UnscheduledSidebar({
         {items.length > 0 ? (
           <div className="flex flex-col gap-2">
             {(() => {
-              // 根據已排程卡片的順序排序未排程卡片
+              // 根據已排程卡片的順序排序未排程卡片，混合缸卡片排在最下方
               const sortedItems = [...items].sort((a, b) => {
+                // 混合缸卡片排在最下方
+                const isMixTankA = a.materialDescription === "混合缸排程";
+                const isMixTankB = b.materialDescription === "混合缸排程";
+                
+                // 如果一個是混合缸，一個不是，混合缸排在後面（最下方）
+                if (isMixTankA && !isMixTankB) return 1;
+                if (!isMixTankA && isMixTankB) return -1;
+                
+                // 如果兩個都是混合缸，保持原有順序
+                if (isMixTankA && isMixTankB) {
+                  return 0;
+                }
+                
                 // 取得 productName 的前綴（例如 MO、PE、AC）
                 const getProductPrefix = (productName: string): string => {
                   // 提取前兩個字母作為前綴（例如 MO13425033 -> MO）
@@ -235,9 +284,13 @@ export default function UnscheduledSidebar({
                   onToggleCCD={onToggleCCD}
                   onToggleDryblending={onToggleDryblending}
                   onTogglePackage={onTogglePackage}
+                  onToggle2Press={onToggle2Press}
+                  onToggle3Press={onToggle3Press}
                   onQuantityChange={onQuantityChange}
+                  onMaterialReadyDateChange={onMaterialReadyDateChange}
                   onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
                   qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}
+                  suggestedSchedule={getSuggestedSchedule ? getSuggestedSchedule(item.productName) : null}
                 />
               ));
             })()}

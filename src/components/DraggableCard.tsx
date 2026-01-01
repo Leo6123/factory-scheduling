@@ -5,6 +5,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { ScheduleItem } from "@/types/schedule";
 import { getProductColor } from "@/utils/productColor";
+import { RecipeItem } from "@/types/recipe";
 
 interface DraggableCardProps {
   item: ScheduleItem;
@@ -13,14 +14,21 @@ interface DraggableCardProps {
   onToggleCCD?: (itemId: string) => void;  // 切換 CCD 狀態
   onToggleDryblending?: (itemId: string) => void;  // 切換 Dryblending 狀態
   onTogglePackage?: (itemId: string) => void;  // 切換 Package 狀態
+  onToggle2Press?: (itemId: string) => void;  // 切換 2押 狀態
+  onToggle3Press?: (itemId: string) => void;  // 切換 3押 狀態
   onQuantityChange?: (itemId: string, newQuantity: number) => void;  // 更改數量
+  onMaterialReadyDateChange?: (itemId: string, newDate: string) => void;  // 更改齊料時間
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
   qcStatus?: 'QC中' | 'QC完成' | 'NG' | null;  // QC 狀態
+  suggestedSchedule?: string[] | null;  // 建議排程
 }
 
-export default function DraggableCard({ item, color, onToggleCrystallization, onToggleCCD, onToggleDryblending, onTogglePackage, onQuantityChange, onToggleAbnormalIncomplete, qcStatus }: DraggableCardProps) {
+export default function DraggableCard({ item, color, onToggleCrystallization, onToggleCCD, onToggleDryblending, onTogglePackage, onToggle2Press, onToggle3Press, onQuantityChange, onMaterialReadyDateChange, onToggleAbnormalIncomplete, qcStatus, suggestedSchedule }: DraggableCardProps) {
   const [isEditingQuantity, setIsEditingQuantity] = useState(false);
   const [editQuantity, setEditQuantity] = useState(item.quantity.toString());
+  const [isEditingMaterialReadyDate, setIsEditingMaterialReadyDate] = useState(false);
+  const [editMaterialReadyDate, setEditMaterialReadyDate] = useState(item.materialReadyDate || '');
+  const [isRecipeExpanded, setIsRecipeExpanded] = useState(false);
 
   // 根據 Material Number (productName) 的第三個字元判斷顏色
   const cardColor = color || getProductColor(item.productName);
@@ -64,6 +72,16 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
     onTogglePackage?.(item.id);
   };
 
+  const handle2PressClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggle2Press?.(item.id);
+  };
+
+  const handle3PressClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggle3Press?.(item.id);
+  };
+
   const handleQuantityClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onQuantityChange) {
@@ -88,6 +106,33 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
     }
   };
 
+  const handleMaterialReadyDateClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 已排程時或混合缸卡片都可以編輯
+    if (onMaterialReadyDateChange && (item.scheduleDate || item.materialDescription === "混合缸排程")) {
+      // 如果沒有齊料時間，使用今天的日期作為預設值
+      const defaultDate = item.materialReadyDate || new Date().toISOString().split('T')[0];
+      setEditMaterialReadyDate(defaultDate);
+      setIsEditingMaterialReadyDate(true);
+    }
+  };
+
+  const handleMaterialReadyDateSave = () => {
+    if (onMaterialReadyDateChange) {
+      onMaterialReadyDateChange(item.id, editMaterialReadyDate);
+    }
+    setIsEditingMaterialReadyDate(false);
+  };
+
+  const handleMaterialReadyDateKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleMaterialReadyDateSave();
+    } else if (e.key === "Escape") {
+      setIsEditingMaterialReadyDate(false);
+      setEditMaterialReadyDate(item.materialReadyDate || '');
+    }
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -100,10 +145,19 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
                  ${isDragging ? "ring-2 ring-blue-500 shadow-lg shadow-blue-500/20" : ""}
                  ${item.isAbnormalIncomplete ? "ring-2 ring-red-500/70" : item.needsCrystallization ? "ring-1 ring-cyan-400/50" : ""}`}
     >
+      {/* 清機流程掃把圖示 - 左上角 */}
+      {item.isCleaningProcess && (
+        <div className="absolute top-1 left-1 text-blue-400 z-10 text-lg" title="清機流程">
+          🧹
+        </div>
+      )}
+      
       {/* 產品名稱 + 標記 */}
       <div className="flex items-center justify-between gap-1 mb-1">
-        <div className="font-bold text-sm text-white truncate flex-1">
-          {item.productName}
+        <div className={`font-bold text-sm text-white truncate flex-1 ${item.isCleaningProcess ? 'ml-6' : ''}`}>
+          {item.isCleaningProcess && item.cleaningType 
+            ? `清機流程 ${item.cleaningType}` 
+            : item.productName}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
           {item.isAbnormalIncomplete && (
@@ -195,6 +249,70 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
               </span>
             )}
           </div>
+          
+          {/* 齊料時間 - 可編輯（已排程時或混合缸卡片） */}
+          {(item.scheduleDate || item.materialDescription === "混合缸排程") && (
+            <div 
+              className="text-xs text-gray-300 mb-1"
+              onPointerDown={(e) => isEditingMaterialReadyDate && e.stopPropagation()}
+            >
+              <span className="text-gray-500">齊料時間:</span>{" "}
+              {isEditingMaterialReadyDate ? (
+                <input
+                  type="date"
+                  value={editMaterialReadyDate}
+                  onChange={(e) => setEditMaterialReadyDate(e.target.value)}
+                  onBlur={handleMaterialReadyDateSave}
+                  onKeyDown={handleMaterialReadyDateKeyDown}
+                  className="px-1 py-0.5 bg-gray-800 border border-purple-500 rounded text-purple-400 font-semibold text-xs outline-none"
+                  autoFocus
+                />
+              ) : (
+                <span 
+                  className={`text-purple-400 ${onMaterialReadyDateChange ? "cursor-pointer hover:underline hover:text-purple-300" : ""}`}
+                  onClick={handleMaterialReadyDateClick}
+                  title={onMaterialReadyDateChange ? "點擊編輯齊料時間" : undefined}
+                >
+                  {item.materialReadyDate || (onMaterialReadyDateChange ? "點擊設定" : "")}
+                </span>
+              )}
+            </div>
+          )}
+          {/* 齊料時間 - 未排程時只顯示（不可編輯，混合缸卡片除外） */}
+          {item.materialReadyDate && !item.scheduleDate && item.materialDescription !== "混合缸排程" && (
+            <div className="text-xs text-gray-300 mb-1">
+              <span className="text-gray-500">齊料時間:</span>{" "}
+              <span className="text-purple-400">{item.materialReadyDate}</span>
+            </div>
+          )}
+          
+          {/* Caution 警告：齊料時間晚於排程時間才顯示 */}
+          {item.materialReadyDate && item.scheduleDate && item.startHour !== undefined && (() => {
+            // 比較日期（只比較日期部分，不比較時間）
+            // 確保日期格式正確（去除可能的空格）
+            const readyDateStr = item.materialReadyDate.trim(); // YYYY-MM-DD
+            const scheduleDateStr = item.scheduleDate.trim();   // YYYY-MM-DD
+            
+            // 驗證日期格式
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(readyDateStr) || !dateRegex.test(scheduleDateStr)) {
+              return null;
+            }
+            
+            // 如果齊料日期晚於排程日期，顯示警告
+            // 直接比較字符串格式的日期（YYYY-MM-DD 格式可以直接字符串比較）
+            // readyDateStr > scheduleDateStr 表示齊料時間晚於排程時間
+            if (readyDateStr > scheduleDateStr) {
+              return (
+                <div className="text-xs mb-1">
+                  <span className="px-1.5 py-0.5 bg-yellow-500/30 text-yellow-300 rounded font-medium">
+                    ⚠️ Caution
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </>
       )}
       
@@ -211,13 +329,131 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
           <span className="text-gray-500">需求:</span> {item.deliveryDate}
         </div>
       )}
+      
+      {/* 建議排程 - 僅顯示 */}
+      {suggestedSchedule && suggestedSchedule.length > 0 && (
+        <div className="text-xs mb-1">
+          <span className="text-gray-500">建議排程:</span>{" "}
+          <span className="text-blue-400 font-medium">
+            {suggestedSchedule.join(", ")}
+          </span>
+        </div>
+      )}
+      
+      {/* 看配方 - 展開/收合 */}
+      {item.recipeItems && item.recipeItems.length > 0 && (
+        <div className="text-xs mb-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsRecipeExpanded(!isRecipeExpanded);
+            }}
+            className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+          >
+            <span className="text-gray-500">看配方:</span>
+            <span className="font-medium">
+              {isRecipeExpanded ? "收合" : "展開"} ({item.recipeItems.length} 項)
+            </span>
+            <svg
+              className={`w-3 h-3 transition-transform ${isRecipeExpanded ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          
+          {/* 配方列表 - 展開時顯示 */}
+          {isRecipeExpanded && (
+            <div className="mt-2 ml-4 space-y-1.5 border-l-2 border-blue-500/30 pl-3">
+              {item.recipeItems.map((recipe: RecipeItem, idx: number) => (
+                <div key={idx} className="text-[11px] text-gray-300 bg-gray-800/50 rounded p-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="font-medium text-blue-400 mb-0.5">
+                        {recipe.materialList || "—"}
+                      </div>
+                      {recipe.materialListDesc && (
+                        <div className="text-gray-400 text-[10px] mb-1">
+                          {recipe.materialListDesc}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-emerald-400 font-semibold">
+                        {recipe.requirementQuantity.toLocaleString(undefined, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 3,
+                        })}
+                      </div>
+                      <div className="text-gray-500 text-[10px]">
+                        {recipe.baseUnit || "—"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* 勾選選項 - 清機流程和故障維修不顯示 */}
-      {!item.isCleaningProcess && !item.isMaintenance && (onToggleCrystallization || onToggleCCD || onToggleDryblending || onTogglePackage || onToggleAbnormalIncomplete) && (
+      {/* 勾選選項 - 清機流程、故障維修和混合缸排程不顯示 */}
+      {!item.isCleaningProcess && !item.isMaintenance && item.materialDescription !== "混合缸排程" && (onToggleCrystallization || onToggleCCD || onToggleDryblending || onTogglePackage || onToggle2Press || onToggle3Press || onToggleAbnormalIncomplete) && (
         <div 
           className="mt-2 pt-2 border-t border-white/10"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          {/* 2押和3押勾選 - 最上方，兩欄對齊（混合缸卡片不顯示） */}
+          {item.materialDescription !== "混合缸排程" && (
+            <div className="grid grid-cols-2 gap-1 mb-1">
+              {/* 左欄：2押 */}
+              <div className="flex flex-col gap-1">
+                {onToggle2Press && (
+                  <label 
+                    className="flex items-center gap-1 cursor-pointer text-[11px] text-gray-400 hover:text-purple-400 transition-colors"
+                    onClick={handle2PressClick}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-all
+                                    ${item.is2Press 
+                                      ? "bg-purple-500 border-purple-500" 
+                                      : "border-gray-500 hover:border-purple-400"}`}>
+                      {item.is2Press && (
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    2押
+                  </label>
+                )}
+              </div>
+
+              {/* 右欄：3押 */}
+              <div className="flex flex-col gap-1">
+                {onToggle3Press && (
+                  <label 
+                    className="flex items-center gap-1 cursor-pointer text-[11px] text-gray-400 hover:text-indigo-400 transition-colors"
+                    onClick={handle3PressClick}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-all
+                                    ${item.is3Press 
+                                      ? "bg-indigo-500 border-indigo-500" 
+                                      : "border-gray-500 hover:border-indigo-400"}`}>
+                      {item.is3Press && (
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    3押
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 兩欄並排 */}
           <div className="grid grid-cols-2 gap-1">
             {/* 左欄：結晶 + CCD */}

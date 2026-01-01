@@ -45,12 +45,12 @@ export default function CleaningProcessForm({ onAdd }: CleaningProcessFormProps)
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="w-full px-3 py-2 text-sm font-medium rounded-lg
+        className="px-2 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap
                    bg-cyan-500/20 text-cyan-400 border border-cyan-500/30
                    hover:bg-cyan-500/30 transition-colors
-                   flex items-center gap-2"
+                   flex items-center gap-1"
       >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>

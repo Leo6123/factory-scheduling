@@ -10,6 +10,6 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', 'Microsoft JhengHei', '微軟正黑體', 'PingFang TC', 'Helvetica Neue', Tahoma, Geneva, Verdana, sans-serif;
 }
 

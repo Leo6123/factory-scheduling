@@ -7,7 +7,7 @@ interface LineConfigEditorProps {
   lineId: string;
   lineName: string;
   color: string;
-  config: LineConfig;
+  config?: LineConfig;  // 改為可選，添加防護措施
   onUpdate: (lineId: string, avgOutput: number) => void;
 }
 
@@ -18,15 +18,18 @@ export default function LineConfigEditor({
   config,
   onUpdate,
 }: LineConfigEditorProps) {
+  // 防護措施：如果 config 為 undefined，使用預設值
+  const safeConfig = config || { id: lineId, avgOutput: 100 };
+  
   const [isEditing, setIsEditing] = useState(false);
-  const [inputValue, setInputValue] = useState(config.avgOutput.toString());
+  const [inputValue, setInputValue] = useState(safeConfig.avgOutput.toString());
 
   const handleSave = () => {
     const value = parseFloat(inputValue);
     if (!isNaN(value) && value > 0) {
       onUpdate(lineId, value);
     } else {
-      setInputValue(config.avgOutput.toString());
+      setInputValue(safeConfig.avgOutput.toString());
     }
     setIsEditing(false);
   };
@@ -35,7 +38,7 @@ export default function LineConfigEditor({
     if (e.key === "Enter") {
       handleSave();
     } else if (e.key === "Escape") {
-      setInputValue(config.avgOutput.toString());
+      setInputValue(safeConfig.avgOutput.toString());
       setIsEditing(false);
     }
   };
@@ -72,7 +75,7 @@ export default function LineConfigEditor({
                        bg-gray-800/50 px-2 py-0.5 rounded hover:bg-gray-700"
             title="點擊編輯平均產量"
           >
-            {config.avgOutput} kg/h
+            {safeConfig.avgOutput} kg/h
           </button>
         )}
       </div>

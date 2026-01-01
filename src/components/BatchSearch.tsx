@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { ScheduleItem } from "@/types/schedule";
 import { PRODUCTION_LINES, UNSCHEDULED_LANE } from "@/constants/productionLines";
+import { useQCStatus } from "@/hooks/useQCStatus";
 
 interface BatchSearchProps {
   scheduleItems: ScheduleItem[];
@@ -12,6 +13,7 @@ interface SearchResult {
   item: ScheduleItem;
   lineName: string;
   lineColor: string;
+  qcStatus: 'QC中' | 'QC完成' | 'NG' | null;
 }
 
 export default function BatchSearch({ scheduleItems }: BatchSearchProps) {
@@ -19,6 +21,11 @@ export default function BatchSearch({ scheduleItems }: BatchSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 獲取 QC 狀態
+  const googleSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || '';
+  const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
+  const { getBatchQCStatus } = useQCStatus(scheduleItems, googleSheetId, googleApiKey);
 
   // 開啟時自動 focus
   useEffect(() => {
@@ -43,15 +50,17 @@ export default function BatchSearch({ scheduleItems }: BatchSearchProps) {
       (item) => item.batchNumber.toLowerCase().includes(queryLower)
     );
 
-    // 加入產線資訊
+    // 加入產線資訊和 QC 狀態
     const resultsWithLine: SearchResult[] = matchedItems.map((item) => {
       const line = PRODUCTION_LINES.find((l) => l.id === item.lineId);
       const isUnscheduled = item.lineId === UNSCHEDULED_LANE.id;
+      const qcStatus = getBatchQCStatus(item.batchNumber);
       
       return {
         item,
         lineName: isUnscheduled ? "未排程" : (line?.name || "未知"),
         lineColor: isUnscheduled ? UNSCHEDULED_LANE.color : (line?.color || "#6B7280"),
+        qcStatus,
       };
     });
 
@@ -156,20 +165,39 @@ export default function BatchSearch({ scheduleItems }: BatchSearchProps) {
                       key={result.item.id}
                       className="p-3 rounded-lg hover:bg-white/5 transition-colors"
                     >
-                      {/* 批號 & 產線 */}
-                      <div className="flex items-center justify-between mb-2">
+                      {/* 批號 & 產線 & QC狀態 */}
+                      <div className="flex items-center justify-between mb-2 gap-2">
                         <span className="font-bold text-white">
                           {result.item.batchNumber}
                         </span>
-                        <span
-                          className="px-2 py-0.5 rounded text-xs font-medium"
-                          style={{
-                            backgroundColor: `${result.lineColor}30`,
-                            color: result.lineColor,
-                          }}
-                        >
-                          {result.lineName}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {/* QC 狀態標籤 */}
+                          {result.qcStatus === 'QC中' && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/30 text-yellow-300 rounded font-medium">
+                              🟡QC中
+                            </span>
+                          )}
+                          {result.qcStatus === 'QC完成' && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-green-500/30 text-green-300 rounded font-medium">
+                              ✅QC完成
+                            </span>
+                          )}
+                          {result.qcStatus === 'NG' && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/30 text-red-300 rounded font-medium">
+                              ❌NG
+                            </span>
+                          )}
+                          {/* 產線標籤 */}
+                          <span
+                            className="px-2 py-0.5 rounded text-xs font-medium"
+                            style={{
+                              backgroundColor: `${result.lineColor}30`,
+                              color: result.lineColor,
+                            }}
+                          >
+                            {result.lineName}
+                          </span>
+                        </div>
                       </div>
 
                       {/* 排程資訊 */}

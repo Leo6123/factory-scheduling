@@ -1,15 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { parseExcelFile, ImportResult } from "@/utils/excelParser";
-import { ScheduleItem } from "@/types/schedule";
+import { parseSuggestedScheduleExcel, SuggestedScheduleImportResult } from "@/utils/suggestedScheduleParser";
+import { SuggestedSchedule } from "@/types/suggestedSchedule";
 
-interface ImportExcelButtonProps {
-  onImport: (items: ScheduleItem[]) => void;
-  existingBatchIds: Set<string>;
+interface ImportSuggestedScheduleButtonProps {
+  onImport: (schedules: SuggestedSchedule[]) => Promise<boolean>;
 }
 
-export default function ImportExcelButton({ onImport, existingBatchIds }: ImportExcelButtonProps) {
+export default function ImportSuggestedScheduleButton({ onImport }: ImportSuggestedScheduleButtonProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,27 +25,25 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
     setError(null);
 
     try {
-      const result: ImportResult = await parseExcelFile(file, existingBatchIds);
+      const result: SuggestedScheduleImportResult = await parseSuggestedScheduleExcel(file);
       
-      if (result.items.length === 0) {
-        if (result.alreadyExistsCount > 0) {
-          setError(`所有批號都已存在於畫面中 (${result.alreadyExistsCount} 筆)`);
-        } else {
-          setError("Excel 檔案中沒有找到有效資料");
-        }
+      if (result.schedules.length === 0) {
+        setError("Excel 檔案中沒有找到有效資料");
       } else {
-        onImport(result.items);
+        const success = await onImport(result.schedules);
         
-        // 顯示匯入結果
-        let message = `成功匯入 ${result.importedCount} 筆訂單`;
-        if (result.bomDuplicateCount > 0) {
-          message += ` (已過濾 ${result.bomDuplicateCount} 筆 BOM 重複資料)`;
+        if (success) {
+          // 顯示匯入結果
+          let message = `成功匯入 ${result.importedCount} 筆建議排程`;
+          if (result.errorCount > 0) {
+            message += `\n有 ${result.errorCount} 筆資料解析失敗`;
+          }
+          message += `\n\n資料已自動儲存`;
+          alert(message);
+        } else {
+          // 這個情況理論上不會發生，因為 importSchedules 現在總是返回 true
+          setError("匯入失敗，請檢查控制台錯誤訊息");
         }
-        if (result.alreadyExistsCount > 0) {
-          message += `\n已跳過 ${result.alreadyExistsCount} 筆已存在的批號`;
-        }
-        message += `\n\n資料已自動儲存到資料庫`;
-        alert(message);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "匯入失敗");
@@ -76,7 +73,8 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
                    transition-all duration-200
                    ${isLoading 
                      ? "bg-gray-600 cursor-not-allowed" 
-                     : "bg-emerald-600 hover:bg-emerald-500 active:scale-95"}`}
+                     : "bg-blue-600 hover:bg-blue-500 active:scale-95"}`}
+        title="匯入建議排程 Excel 檔案（一個月更新一次）"
       >
         {/* 上傳圖示 */}
         <svg 
@@ -102,7 +100,7 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
           )}
         </svg>
         
-        {isLoading ? "匯入中..." : "匯入訂單 (Excel)"}
+        {isLoading ? "匯入中..." : "匯入建議排程"}
       </button>
 
       {/* 錯誤訊息 */}
@@ -115,3 +113,4 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
     </div>
   );
 }
+

@@ -22,7 +22,7 @@ export default function ClearButton({ onClear, itemCount }: ClearButtonProps) {
     <button
       onClick={handleClick}
       disabled={itemCount === 0}
-      className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs whitespace-nowrap
                  transition-all duration-200
                  ${itemCount === 0
                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
@@ -30,7 +30,7 @@ export default function ClearButton({ onClear, itemCount }: ClearButtonProps) {
     >
       {/* 垃圾桶圖示 */}
       <svg 
-        className="w-4 h-4" 
+        className="w-3 h-3" 
         fill="none" 
         stroke="currentColor" 
         viewBox="0 0 24 24"

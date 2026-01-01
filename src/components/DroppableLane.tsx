@@ -19,7 +19,10 @@ interface DroppableLaneProps {
   onToggleCCD?: (itemId: string) => void;  // 切換 CCD 狀態
   onToggleDryblending?: (itemId: string) => void;  // 切換 Dryblending 狀態
   onTogglePackage?: (itemId: string) => void;  // 切換 Package 狀態
+  onToggle2Press?: (itemId: string) => void;  // 切換 2押 狀態
+  onToggle3Press?: (itemId: string) => void;  // 切換 3押 狀態
   onQuantityChange?: (itemId: string, newQuantity: number) => void;  // 更改數量
+  onMaterialReadyDateChange?: (itemId: string, newDate: string) => void;  // 更改齊料時間
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
   getBatchQCStatus?: (batchNumber: string) => 'QC中' | 'QC完成' | 'NG' | null;  // 取得 QC 狀態
 }
@@ -37,7 +40,10 @@ export default function DroppableLane({
   onToggleCCD,
   onToggleDryblending,
   onTogglePackage,
+  onToggle2Press,
+  onToggle3Press,
   onQuantityChange,
+  onMaterialReadyDateChange,
   onToggleAbnormalIncomplete,
   getBatchQCStatus,
 }: DroppableLaneProps) {
@@ -47,8 +53,18 @@ export default function DroppableLane({
     disabled: !isUnscheduled, // 只有未排程區可以拖放，產線區域禁用
   });
 
-  // 計算此產線的總數量
-  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  // 計算此產線的總數量（排除 NG修色、清機流程、故障維修）
+  const totalQuantity = items
+    .filter((item) => {
+      // NG修色不計入產量
+      if (item.materialDescription === "NG修色") return false;
+      // 清機流程不計入產量
+      if (item.isCleaningProcess) return false;
+      // 故障維修不計入產量
+      if (item.isMaintenance) return false;
+      return true;
+    })
+    .reduce((sum, item) => sum + item.quantity, 0);
   
   // 計算預估生產時間 (小時)
   const estimatedHours = config && config.avgOutput > 0 
@@ -119,7 +135,10 @@ export default function DroppableLane({
               onToggleCCD={onToggleCCD}
               onToggleDryblending={onToggleDryblending}
               onTogglePackage={onTogglePackage}
+              onToggle2Press={onToggle2Press}
+              onToggle3Press={onToggle3Press}
               onQuantityChange={onQuantityChange}
+              onMaterialReadyDateChange={onMaterialReadyDateChange}
               onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
               qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}
             />

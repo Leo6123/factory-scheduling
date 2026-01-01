@@ -1,19 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ScheduleItem } from "@/types/schedule";
 import { UNSCHEDULED_LANE } from "@/constants/productionLines";
 
-interface AddNGColorFormProps {
+interface MixTankFormProps {
   onAdd: (item: ScheduleItem) => void;
-  existingBatchIds: Set<string>;
+  existingBatchIds?: Set<string>;  // 混合缸卡片允許相同批號，此參數保留以保持接口一致性
+  allScheduleItems?: ScheduleItem[];  // 所有排程項目，用於查找相同批號的生產卡片
 }
 
-export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFormProps) {
+export default function MixTankForm({ onAdd, allScheduleItems = [] }: MixTankFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [materialNumber, setMaterialNumber] = useState("");
   const [batchNumber, setBatchNumber] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [materialReadyDate, setMaterialReadyDate] = useState<string>("");
+
+  // 當批號改變時，查找相同批號的生產卡片並繼承齊料時間
+  useEffect(() => {
+    if (batchNumber.trim() && allScheduleItems.length > 0) {
+      // 查找相同批號的生產卡片（排除混合缸卡片）
+      const matchingItem = allScheduleItems.find(
+        (item) =>
+          item.batchNumber === batchNumber.trim() &&
+          item.materialDescription !== "混合缸排程" &&
+          item.materialReadyDate
+      );
+      
+      if (matchingItem && matchingItem.materialReadyDate) {
+        setMaterialReadyDate(matchingItem.materialReadyDate);
+      } else {
+        // 如果沒有找到或沒有齊料時間，清空
+        setMaterialReadyDate("");
+      }
+    } else {
+      setMaterialReadyDate("");
+    }
+  }, [batchNumber, allScheduleItems]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,21 +56,19 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
       return;
     }
 
-    // 檢查批號是否已存在
-    if (existingBatchIds.has(batchNumber.trim())) {
-      alert(`批號 ${batchNumber} 已存在，請使用不同的批號`);
-      return;
-    }
+    // 混合缸卡片允許使用相同批號，不需要檢查重複
 
     // 建立新卡片
     const newItem: ScheduleItem = {
-      id: `ng-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `mix-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       productName: materialNumber.trim(),
-      materialDescription: "NG修色",
+      materialDescription: "混合缸排程",
       batchNumber: batchNumber.trim(),
       quantity: parseFloat(quantity),
       deliveryDate: new Date().toISOString().split("T")[0], // 今天
       lineId: UNSCHEDULED_LANE.id,
+      // 如果有繼承的齊料時間，則加入
+      ...(materialReadyDate.trim() && { materialReadyDate: materialReadyDate.trim() }),
     };
 
     onAdd(newItem);
@@ -55,6 +77,7 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
     setMaterialNumber("");
     setBatchNumber("");
     setQuantity("");
+    setMaterialReadyDate("");
     setIsOpen(false);
   };
 
@@ -63,20 +86,20 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
       <button
         onClick={() => setIsOpen(true)}
         className="px-2 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap
-                   bg-orange-500/20 text-orange-400 border border-orange-500/30
-                   hover:bg-orange-500/30 transition-colors
+                   bg-blue-500/20 text-blue-400 border border-blue-500/30
+                   hover:bg-blue-500/30 transition-colors
                    flex items-center gap-1"
       >
-        <span>🎨</span>
-        <span>NG修色</span>
+        <span>🔧</span>
+        <span>混合缸</span>
       </button>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/30">
+    <form onSubmit={handleSubmit} className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/30">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-orange-400">🎨 新增 NG修色</h3>
+        <h3 className="text-sm font-medium text-blue-400">🔧 新增混合缸排程</h3>
         <button
           type="button"
           onClick={() => setIsOpen(false)}
@@ -96,7 +119,7 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
             onChange={(e) => setMaterialNumber(e.target.value)}
             placeholder="例: NE0NAV12020"
             className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded
-                       text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
+                       text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
           />
         </div>
 
@@ -107,9 +130,9 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
             type="text"
             value={batchNumber}
             onChange={(e) => setBatchNumber(e.target.value)}
-            placeholder="例: TWCC123456(NG)"
+            placeholder="例: TWCC123456"
             className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded
-                       text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
+                       text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
           />
         </div>
 
@@ -124,7 +147,7 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
             step="0.01"
             min="0"
             className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded
-                       text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
+                       text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
           />
         </div>
 
@@ -140,8 +163,8 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
           </button>
           <button
             type="submit"
-            className="flex-1 px-3 py-1.5 text-sm bg-orange-600 text-white rounded
-                       hover:bg-orange-500 transition-colors font-medium"
+            className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded
+                       hover:bg-blue-500 transition-colors font-medium"
           >
             新增
           </button>

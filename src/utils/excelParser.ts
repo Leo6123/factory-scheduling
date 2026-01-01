@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { ScheduleItem } from "@/types/schedule";
+import { RecipeItem } from "@/types/recipe";
 
 // Excel 欄位對應 (根據實際檔案格式，支援多種欄位名稱)
 interface ExcelRow {
@@ -98,7 +99,53 @@ export async function parseExcelFile(
         // 轉換為 JSON (標題在第 1 行，直接使用預設設定)
         const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet);
         
-        // BOM 表去重：使用 Set 紀錄已處理的 Batch
+        // 第一步：收集所有配方資料（按 Material Number 分組）
+        const recipeMap = new Map<string, RecipeItem[]>();
+        
+        for (let index = 0; index < jsonData.length; index++) {
+          const row = jsonData[index];
+          
+          // 取得 Material Number（用於配方對應）
+          const materialNumberValue = getFieldValue(row, 
+            "Material Number", "Material N", "Material number"
+          );
+          
+          if (materialNumberValue) {
+            const materialNumber = String(materialNumberValue).trim();
+            
+            // 檢查是否有配方資料欄位
+            const materialListValue = getFieldValue(row, 
+              "Material List", "Material L", "Item No.Stock Transfer Reserv."
+            );
+            const materialListDescValue = getFieldValue(row, 
+              "Mat. List Desc", "Mat. List D", "Material List Desc"
+            );
+            const requirementQuantityValue = getFieldValue(row, 
+              "Requirement Quantity", "Requirem ent Quantity", "Requirement Qty"
+            );
+            const baseUnitValue = getFieldValue(row, 
+              "Base Unit of Measure", "Base Unit", "Base Unit of Meas"
+            );
+            
+            // 如果有配方資料，加入配方 Map
+            if (materialListValue || materialListDescValue || requirementQuantityValue || baseUnitValue) {
+              if (!recipeMap.has(materialNumber)) {
+                recipeMap.set(materialNumber, []);
+              }
+              
+              const recipeItem: RecipeItem = {
+                materialList: materialListValue ? String(materialListValue).trim() : "",
+                materialListDesc: materialListDescValue ? String(materialListDescValue).trim() : "",
+                requirementQuantity: parseQuantity(requirementQuantityValue as number | string | undefined),
+                baseUnit: baseUnitValue ? String(baseUnitValue).trim() : "",
+              };
+              
+              recipeMap.get(materialNumber)!.push(recipeItem);
+            }
+          }
+        }
+        
+        // 第二步：處理排程項目（BOM 表去重）
         const processedBatches = new Set<string>();
         const items: ScheduleItem[] = [];
         let bomDuplicateCount = 0;
@@ -153,6 +200,12 @@ export async function parseExcelFile(
           const dateValue = goodsIssueDate || scheduledStart;
           const deliveryDate = excelDateToString(dateValue as number | string | Date | undefined);
           
+          // 齊料時間：讀取"齊料時間"或"齊料日期"欄位
+          const materialReadyValue = getFieldValue(row, "齊料時間", "齊料日期", "Material Ready Date", "Material Ready");
+          const materialReadyDate = materialReadyValue 
+            ? excelDateToString(materialReadyValue as number | string | Date | undefined)
+            : undefined;
+          
           // 讀取額外欄位
           const processOrderValue = getFieldValue(row, "Process Order", "Process O");
           const processOrder = processOrderValue ? String(processOrderValue).trim() : undefined;
@@ -163,17 +216,23 @@ export async function parseExcelFile(
           const salesDocValue = getFieldValue(row, "Sales document", "Sales doc", "Sales d");
           const salesDocument = salesDocValue ? String(salesDocValue).trim() : undefined;
           
+          // 取得對應的配方資料
+          const productNameStr = String(productName).trim();
+          const recipeItems = recipeMap.get(productNameStr) || undefined;
+          
           items.push({
             id: `import-${Date.now()}-${index}`,
-            productName: String(productName).trim(),
+            productName: productNameStr,
             materialDescription,
             batchNumber,
             quantity,
             deliveryDate: deliveryDate || new Date().toISOString().split("T")[0],
+            materialReadyDate,
             lineId: "UNSCHEDULED", // 預設放入未排程區
             processOrder,
             customer,
             salesDocument,
+            recipeItems, // 加入配方資料
           });
         }
         

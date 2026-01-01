@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { ScheduleItem } from "@/types/schedule";
+import { ScheduleItem, CLEANING_PROCESS_DURATION } from "@/types/schedule";
 import { getProductColor } from "@/utils/productColor";
 
 interface DraggableTimelineBlockProps {
@@ -32,13 +32,13 @@ export default function DraggableTimelineBlock({
   const [editHours, setEditHours] = useState(item.maintenanceHours?.toString() || "");
   // 根據 Material Number (productName) 的第三個字元判斷顏色
   const blockColor = color || getProductColor(item.productName);
-  // 從前一天延續的區塊不可拖曳 (只能拖曳原始區塊)
-  const canDrag = !isCarryOver;
+  // 允許拖曳所有區塊（包括跨日區塊），拖曳時會使用原始項目的 ID
+  const canDrag = true;
   
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: item.id,
-    data: { item, startHour, durationHours },
-    disabled: !canDrag,
+    data: { item, startHour, durationHours, isCarryOver },
+    disabled: false, // 允許拖曳所有區塊
   });
 
   // 計算位置和寬度 (百分比)
@@ -161,6 +161,13 @@ export default function DraggableTimelineBlock({
         </div>
       )}
       
+      {/* 清機流程掃把圖示 - 左上角 */}
+      {item.isCleaningProcess && (
+        <div className="absolute top-0.5 left-0.5 text-blue-400 z-10 text-sm" title="清機流程">
+          🧹
+        </div>
+      )}
+      
       {/* 異常 + 結晶 + CCD + Dryblend + Package 標記 - 垂直排列 */}
       <div className="absolute top-0.5 right-0.5 flex flex-col items-center gap-0">
         {item.isAbnormalIncomplete && (
@@ -208,8 +215,10 @@ export default function DraggableTimelineBlock({
         )}
       </div>
       
-      <div className="text-xs font-bold text-white truncate">
-        {item.productName}
+      <div className={`text-xs font-bold text-white truncate ${item.isCleaningProcess ? 'pl-5' : ''}`}>
+        {item.isCleaningProcess && item.cleaningType 
+          ? `清機流程 ${item.cleaningType}` 
+          : item.productName}
       </div>
       
       {/* 維修時長編輯 */}
@@ -239,6 +248,10 @@ export default function DraggableTimelineBlock({
           title="點擊編輯時長"
         >
           🔧 {item.maintenanceHours} 小時
+        </div>
+      ) : item.isCleaningProcess && item.cleaningType ? (
+        <div className="text-[10px] text-blue-400">
+          {CLEANING_PROCESS_DURATION[item.cleaningType]} 分鐘
         </div>
       ) : (
         <div className="text-[10px] text-gray-300 truncate">
