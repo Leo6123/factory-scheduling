@@ -176,11 +176,26 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           }
         }
         
-        // 如果 dbItems 是空陣列，但 prev 不是空陣列，可能是資料庫載入錯誤
+        // 如果 dbItems 是空陣列，但 prev 不是空陣列，可能是資料庫載入錯誤或刪除後狀態不一致
         // 在這種情況下，我們應該使用 prev（本地狀態），避免所有卡片消失
         if (dbItemsArray.length === 0 && prev.length > 0) {
-          console.warn('⚠️ 檢測到 dbItems 為空陣列，但本地狀態有資料，可能是資料庫載入錯誤，使用本地狀態');
+          console.warn('⚠️ 檢測到 dbItems 為空陣列，但本地狀態有資料，可能是資料庫載入錯誤或狀態不一致，使用本地狀態');
           return prev; // 使用本地狀態，避免所有卡片消失
+        }
+        
+        // 如果 prev 的項目數多於 dbItems，可能是因為刪除操作後 dbItems 還沒更新
+        // 在這種情況下，我們應該使用 prev（本地狀態），因為它已經反映了刪除操作
+        if (prev.length > dbItemsArray.length && prev.length > 0) {
+          const prevIds = new Set(prev.map(item => item.id));
+          const missingInPrev = dbItemsArray.filter(item => !prevIds.has(item.id));
+          // 如果 dbItems 包含 prev 中沒有的項目，可能是舊資料
+          // 但如果 dbItems 的項目數少於 prev，可能是刪除後 dbItems 還沒更新
+          if (missingInPrev.length === 0) {
+            // dbItems 的所有項目都在 prev 中，但 prev 有更多項目
+            // 這表示 prev 已經反映了刪除操作，而 dbItems 還沒更新
+            console.warn('⚠️ 檢測到本地狀態項目數多於 dbItems，可能是刪除後 dbItems 還沒更新，使用本地狀態');
+            return prev; // 使用本地狀態，避免卡片消失
+          }
         }
         
         return dbItemsArray;
@@ -487,23 +502,17 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
               
               if (deleteSuccess) {
                 console.log(`✅ 成功刪除卡片: ${draggedItemId}`);
-                // 使用 saveScheduleItems 來更新資料庫狀態，確保 dbItems 同步
-                // 這樣可以確保 dbItems 和 localItems 保持一致
-                try {
-                  await saveScheduleItems(filteredItems);
-                  console.log('✅ 已同步刪除狀態到資料庫');
-                } catch (saveErr) {
-                  console.error('同步刪除狀態失敗:', saveErr);
-                  // 即使同步失敗，本地狀態已經更新，所以繼續
-                }
+                // 不調用 saveScheduleItems，因為它可能會失敗（例如欄位不存在）
+                // 而且即使失敗，我們也無法確保 dbItems 會正確更新
+                // 相反，我們直接保持 localItems 的狀態，並在同步邏輯中保護它
                 
                 // 刪除完成後，延遲重置標記，確保所有狀態更新完成
                 // 在重置標記前，useEffect 不會同步 dbItems 到 localItems（因為 isDeleting 為 true）
                 setTimeout(() => {
                   setIsDeleting(false);
                   // 重置標記後，useEffect 會同步 dbItems 到 localItems
-                  // 此時 dbItems 應該已經更新為 filteredItems（因為我們調用了 saveScheduleItems）
-                }, 300);
+                  // 但同步邏輯會保護 localItems，如果 dbItems 是空陣列或包含舊資料，不會覆蓋 localItems
+                }, 500);
               } else {
                 // 刪除失敗時，恢復本地狀態
                 setLocalItems(scheduleItems);
