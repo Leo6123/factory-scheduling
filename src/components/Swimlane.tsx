@@ -147,8 +147,9 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 同步資料庫資料到本地狀態
   const [isDeleting, setIsDeleting] = useState(false); // 標記是否正在刪除，避免刪除時被同步覆蓋
   const [isImporting, setIsImporting] = useState(false); // 標記是否正在匯入，避免匯入時被同步覆蓋
+  const [isClearing, setIsClearing] = useState(false); // 標記是否正在清除，避免清除時被同步覆蓋
   useEffect(() => {
-    if (!isDataLoading && !isDeleting && !isImporting) {
+    if (!isDataLoading && !isDeleting && !isImporting && !isClearing) {
       // 優先使用資料庫的資料，確保是陣列
       // 但如果在刪除或匯入過程中，不要同步（避免覆蓋本地狀態）
       // 只有在 dbItems 和 localItems 不同時才同步，避免不必要的更新
@@ -159,10 +160,33 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
             dbItemsArray.every((item, index) => item.id === prev[index]?.id)) {
           return prev;
         }
+        
+        // 如果 prev 的項目數少於 dbItems，可能是因為刪除操作
+        // 檢查 prev 中的項目是否都在 dbItems 中
+        if (prev.length < dbItemsArray.length) {
+          const prevIds = new Set(prev.map(item => item.id));
+          const missingInDb = dbItemsArray.filter(item => !prevIds.has(item.id));
+          // 如果 dbItems 包含 prev 中沒有的項目，可能是重新載入時載入到舊資料
+          // 在這種情況下，我們應該使用 prev（本地狀態），因為它已經反映了刪除操作
+          if (missingInDb.length > 0) {
+            console.warn('⚠️ 檢測到 dbItems 包含本地狀態中沒有的項目，可能是重新載入時載入到舊資料，使用本地狀態');
+            console.warn('本地狀態項目數:', prev.length, 'dbItems 項目數:', dbItemsArray.length);
+            console.warn('dbItems 中多出的項目:', missingInDb.map(item => item.id));
+            return prev; // 使用本地狀態，避免其他卡片出現
+          }
+        }
+        
+        // 如果 dbItems 是空陣列，但 prev 不是空陣列，可能是資料庫載入錯誤
+        // 在這種情況下，我們應該使用 prev（本地狀態），避免所有卡片消失
+        if (dbItemsArray.length === 0 && prev.length > 0) {
+          console.warn('⚠️ 檢測到 dbItems 為空陣列，但本地狀態有資料，可能是資料庫載入錯誤，使用本地狀態');
+          return prev; // 使用本地狀態，避免所有卡片消失
+        }
+        
         return dbItemsArray;
       });
     }
-  }, [dbItems, isDataLoading, isDeleting, isImporting]);
+  }, [dbItems, isDataLoading, isDeleting, isImporting, isClearing]);
 
   // 包裝的更新函數：先更新本地狀態，然後非同步儲存到資料庫
   const setScheduleItems = (updater: ScheduleItem[] | ((prev: ScheduleItem[]) => ScheduleItem[])) => {
@@ -463,23 +487,23 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
               
               if (deleteSuccess) {
                 console.log(`✅ 成功刪除卡片: ${draggedItemId}`);
-                // 重新載入資料以確保 dbItems 同步
-                if (reloadScheduleData) {
-                  try {
-                    await reloadScheduleData();
-                    // 重新載入完成後，再重置標記
-                    setIsDeleting(false);
-                  } catch (reloadErr) {
-                    console.error('重新載入資料失敗:', reloadErr);
-                    // 即使重新載入失敗，也重置標記（因為刪除已成功）
-                    setIsDeleting(false);
-                  }
-                } else {
-                  // 如果沒有重新載入函數，延遲重置標記
-                  setTimeout(() => {
-                    setIsDeleting(false);
-                  }, 500);
+                // 使用 saveScheduleItems 來更新資料庫狀態，確保 dbItems 同步
+                // 這樣可以確保 dbItems 和 localItems 保持一致
+                try {
+                  await saveScheduleItems(filteredItems);
+                  console.log('✅ 已同步刪除狀態到資料庫');
+                } catch (saveErr) {
+                  console.error('同步刪除狀態失敗:', saveErr);
+                  // 即使同步失敗，本地狀態已經更新，所以繼續
                 }
+                
+                // 刪除完成後，延遲重置標記，確保所有狀態更新完成
+                // 在重置標記前，useEffect 不會同步 dbItems 到 localItems（因為 isDeleting 為 true）
+                setTimeout(() => {
+                  setIsDeleting(false);
+                  // 重置標記後，useEffect 會同步 dbItems 到 localItems
+                  // 此時 dbItems 應該已經更新為 filteredItems（因為我們調用了 saveScheduleItems）
+                }, 300);
               } else {
                 // 刪除失敗時，恢復本地狀態
                 setLocalItems(scheduleItems);
@@ -666,9 +690,70 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     setScheduleItems((prev) => [...prev, item]);
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     saveHistory();
-    setScheduleItems([]);
+    
+    // 標記正在清除，避免 useEffect 同步覆蓋
+    setIsClearing(true);
+    
+    try {
+      // 先更新本地狀態（立即更新 UI）
+      setLocalItems([]);
+      
+      // 同時更新 localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('factory_schedule_items', JSON.stringify([]));
+        } catch (err) {
+          console.error('更新 localStorage 失敗:', err);
+        }
+      }
+      
+      // 從資料庫刪除所有項目
+      if (supabase) {
+        // 先獲取所有項目的 ID，然後批量刪除
+        const { data: allItems, error: fetchError } = await supabase
+          .from(TABLES.SCHEDULE_ITEMS)
+          .select('id');
+        
+        if (fetchError) {
+          console.error('獲取資料庫項目失敗:', fetchError);
+        } else if (allItems && allItems.length > 0) {
+          // 批量刪除所有項目
+          const ids = allItems.map(item => item.id);
+          const { error: deleteError } = await supabase
+            .from(TABLES.SCHEDULE_ITEMS)
+            .delete()
+            .in('id', ids);
+          
+          if (deleteError) {
+            console.error('清除資料庫失敗:', deleteError);
+            // 即使資料庫清除失敗，本地狀態已經清除
+          } else {
+            console.log(`✅ 成功清除資料庫中的 ${ids.length} 筆資料`);
+          }
+        } else {
+          console.log('✅ 資料庫中沒有資料需要清除');
+        }
+      }
+      
+      // 同時使用 saveScheduleItems 確保資料庫狀態一致
+      try {
+        await saveScheduleItems([]);
+        console.log('✅ 已同步清除狀態到資料庫');
+      } catch (err) {
+        console.error('同步清除狀態失敗:', err);
+        // 即使同步失敗，本地狀態已經清除
+      }
+      
+      // 清除完成後，延遲重置標記，確保所有狀態更新完成
+      setTimeout(() => {
+        setIsClearing(false);
+      }, 500);
+    } catch (err) {
+      console.error('清除失敗:', err);
+      setIsClearing(false);
+    }
   };
 
   const handleConfigUpdate = (lineId: string, avgOutput: number) => {

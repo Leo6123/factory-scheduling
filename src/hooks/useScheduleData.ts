@@ -78,21 +78,35 @@ async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<boolean> {
       .upsert(dbItems, { onConflict: 'id' });
 
     // 如果錯誤是因為 material_ready_date 或 recipe_items 欄位不存在，則重試不包含該欄位
-    if (error && error.message) {
+    if (error) {
       let retryWithoutMaterialReadyDate = false;
       let retryWithoutRecipeItems = false;
       
-      if (error.message.includes('material_ready_date')) {
+      // 檢查錯誤訊息和錯誤代碼
+      const errorMsg = (error.message || '').toLowerCase();
+      const errorCode = error.code || '';
+      const errorDetails = JSON.stringify(error).toLowerCase();
+      
+      // 檢查 material_ready_date 欄位錯誤（支援多種錯誤訊息格式）
+      if (errorMsg.includes('material_ready_date') || 
+          errorMsg.includes("could not find the 'material_ready_date' column") ||
+          errorMsg.includes("column 'material_ready_date' does not exist") ||
+          errorDetails.includes('material_ready_date')) {
         console.warn('資料庫沒有 material_ready_date 欄位，嘗試不包含該欄位保存');
         retryWithoutMaterialReadyDate = true;
       }
       
-      if (error.message.includes('recipe_items')) {
+      // 檢查 recipe_items 欄位錯誤（支援多種錯誤訊息格式）
+      if (errorMsg.includes('recipe_items') || 
+          errorMsg.includes("could not find the 'recipe_items' column") ||
+          errorMsg.includes("column 'recipe_items' does not exist") ||
+          errorDetails.includes('recipe_items')) {
         console.warn('資料庫沒有 recipe_items 欄位，嘗試不包含該欄位保存');
         retryWithoutRecipeItems = true;
       }
       
       if (retryWithoutMaterialReadyDate || retryWithoutRecipeItems) {
+        console.log('🔄 重試儲存（不包含不存在的欄位）...');
         dbItems = items.map(item => scheduleItemToDB(
           item, 
           !retryWithoutMaterialReadyDate,  // includeMaterialReadyDate
@@ -102,6 +116,10 @@ async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<boolean> {
         ({ error } = await supabase
           .from(TABLES.SCHEDULE_ITEMS)
           .upsert(dbItems, { onConflict: 'id' }));
+        
+        if (!error) {
+          console.log('✅ 重試儲存成功（不包含不存在的欄位）');
+        }
       }
     }
 
