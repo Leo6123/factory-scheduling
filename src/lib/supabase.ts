@@ -13,6 +13,12 @@ export const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+// 在開發環境中，將 supabase 客戶端暴露到 window 物件，方便調試
+if (typeof window !== 'undefined' && supabase) {
+  (window as any).__SUPABASE_CLIENT__ = supabase;
+  (window as any).__SUPABASE_URL__ = supabaseUrl;
+}
+
 // 資料庫表格名稱
 export const TABLES = {
   SCHEDULE_ITEMS: 'schedule_items',
