@@ -79,7 +79,8 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
     
     let { data, error } = await supabase
       .from(TABLES.SCHEDULE_ITEMS)
-      .upsert(dbItems, { onConflict: 'id' });
+      .upsert(dbItems, { onConflict: 'id' })
+      .select();
 
     // 如果錯誤是因為 material_ready_date 或 recipe_items 欄位不存在，則重試不包含該欄位
     if (error) {
@@ -119,11 +120,13 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
         
         ({ data, error } = await supabase
           .from(TABLES.SCHEDULE_ITEMS)
-          .upsert(dbItems, { onConflict: 'id' }));
+          .upsert(dbItems, { onConflict: 'id' })
+          .select());
         
         if (!error) {
           console.log('✅ 重試儲存成功（不包含不存在的欄位）');
-          console.log('📊 保存結果:', data ? `${data.length} 筆` : '無返回資料');
+          const dataArray = data as any[] | null;
+          console.log('📊 保存結果:', dataArray ? `${dataArray.length} 筆` : '無返回資料');
         } else {
           console.error('❌ 重試儲存仍然失敗:', error);
         }
@@ -140,7 +143,8 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
     }
 
     console.log('✅ 成功保存到 Supabase 資料庫');
-    console.log('📊 保存結果:', data ? `${data.length} 筆` : '無返回資料');
+    const dataArray = data as any[] | null;
+    console.log('📊 保存結果:', dataArray ? `${dataArray.length} 筆` : '無返回資料');
     return true;
   } catch (error) {
     console.error('儲存排程項目異常:', error);
