@@ -61,7 +61,7 @@ async function loadScheduleItemsFromDB(): Promise<ScheduleItem[]> {
 }
 
 // 儲存排程項目到資料庫
-async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<boolean> {
+export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<boolean> {
   // 同時儲存到 localStorage 作為備用
   saveToLocalStorage(items);
 

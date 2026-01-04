@@ -38,20 +38,28 @@ export default function SaveSnapshotButton({
   }, []);
 
   // 保存快照
-  const handleSave = () => {
+  const handleSave = async () => {
     if (typeof window === 'undefined') return;
     
     try {
-      // 保存排程項目
+      // 先保存到 localStorage（快速響應）
       localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(scheduleItems));
-      // 保存產線設定
       localStorage.setItem(SNAPSHOT_CONFIGS_KEY, JSON.stringify(lineConfigs));
       
       setHasSnapshot(true);
       setShowConfirm(false);
       
-      // 顯示成功訊息
-      alert('✅ 存檔成功！');
+      // 同時保存到 Supabase 資料庫
+      const { saveScheduleItemsToDB } = await import('@/hooks/useScheduleData');
+      const dbSuccess = await saveScheduleItemsToDB(scheduleItems);
+      
+      if (dbSuccess) {
+        console.log('✅ 已保存到 Supabase 資料庫');
+        alert('✅ 存檔成功！已保存到資料庫');
+      } else {
+        console.warn('⚠️ 保存到資料庫失敗，但已保存到本地');
+        alert('✅ 存檔成功（已保存到本地，但資料庫保存失敗，請檢查網路連線或資料庫欄位）');
+      }
     } catch (error) {
       console.error('存檔失敗:', error);
       alert('❌ 存檔失敗，請稍後再試');
