@@ -52,7 +52,59 @@ AND table_name = 'schedule_items'
 AND column_name IN ('material_ready_date', 'recipe_items')
 ORDER BY column_name;
 
--- 5. 檢查 RLS 政策（確保有寫入權限）
+-- 5. 修改 start_hour 欄位類型（如果存在且是整數，改為支援小數）
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'schedule_items'
+    AND column_name = 'start_hour'
+    AND data_type = 'integer'
+  ) THEN
+    ALTER TABLE public.schedule_items
+    ALTER COLUMN start_hour TYPE NUMERIC(5,2);
+    
+    RAISE NOTICE '✅ 已將 start_hour 欄位改為 NUMERIC(5,2) 以支援小數';
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'schedule_items'
+    AND column_name = 'start_hour'
+  ) THEN
+    RAISE NOTICE 'ℹ️ start_hour 欄位已存在且不是整數類型';
+  ELSE
+    RAISE NOTICE 'ℹ️ start_hour 欄位不存在（將在應用程式首次使用時建立）';
+  END IF;
+END $$;
+
+-- 6. 修改 maintenance_hours 欄位類型（如果存在且是整數，改為支援小數）
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'schedule_items'
+    AND column_name = 'maintenance_hours'
+    AND data_type = 'integer'
+  ) THEN
+    ALTER TABLE public.schedule_items
+    ALTER COLUMN maintenance_hours TYPE NUMERIC(5,2);
+    
+    RAISE NOTICE '✅ 已將 maintenance_hours 欄位改為 NUMERIC(5,2) 以支援小數';
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'schedule_items'
+    AND column_name = 'maintenance_hours'
+  ) THEN
+    RAISE NOTICE 'ℹ️ maintenance_hours 欄位已存在且不是整數類型';
+  ELSE
+    RAISE NOTICE 'ℹ️ maintenance_hours 欄位不存在（將在應用程式首次使用時建立）';
+  END IF;
+END $$;
+
+-- 7. 檢查 RLS 政策（確保有寫入權限）
 SELECT policyname, cmd, roles
 FROM pg_policies
 WHERE tablename = 'schedule_items';
