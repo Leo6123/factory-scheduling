@@ -221,6 +221,15 @@ export default function DraggableTimelineBlock({
           : item.productName}
       </div>
       
+      {/* 如果是新增卡片功能創建的，顯示「新增」提示 */}
+      {item.id.startsWith('card-') && !item.isCleaningProcess && !item.isMaintenance && (
+        <div className="text-[8px] text-blue-300 mt-0.5">
+          <span className="px-1 py-0.5 bg-blue-500/20 text-blue-300 rounded">
+            新增
+          </span>
+        </div>
+      )}
+      
       {/* 維修時長編輯 */}
       {item.isMaintenance && isEditingHours ? (
         <div 

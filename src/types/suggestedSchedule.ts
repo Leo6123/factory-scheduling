@@ -8,3 +8,4 @@ export interface SuggestedSchedule {
 // 建議排程數據映射表 (Material Number -> SuggestedSchedule)
 export type SuggestedScheduleMap = Record<string, SuggestedSchedule>;
 
+

@@ -25,6 +25,7 @@ interface DroppableLaneProps {
   onMaterialReadyDateChange?: (itemId: string, newDate: string) => void;  // 更改齊料時間
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
   getBatchQCStatus?: (batchNumber: string) => 'QC中' | 'QC完成' | 'NG' | null;  // 取得 QC 狀態
+  getSuggestedSchedule?: (materialNumber: string) => string[] | null;  // 取得建議排程
 }
 
 export default function DroppableLane({ 
@@ -46,6 +47,7 @@ export default function DroppableLane({
   onMaterialReadyDateChange,
   onToggleAbnormalIncomplete,
   getBatchQCStatus,
+  getSuggestedSchedule,
 }: DroppableLaneProps) {
   // 卡片視圖模式下，產線區域禁用拖放（只能退回未排程區）
   const { isOver, setNodeRef } = useDroppable({
@@ -141,6 +143,7 @@ export default function DroppableLane({
               onMaterialReadyDateChange={onMaterialReadyDateChange}
               onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
               qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}
+              suggestedSchedule={getSuggestedSchedule ? getSuggestedSchedule(item.productName) : null}
             />
           ))
         ) : (

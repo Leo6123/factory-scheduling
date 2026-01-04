@@ -40,7 +40,7 @@ export const mockScheduleItems: ScheduleItem[] = [
     batchNumber: "B2024-005",
     quantity: 350,
     deliveryDate: "2024-12-28",
-    lineId: "MAXX40",
+    lineId: "40MAXX",
   },
   {
     id: "6",
@@ -72,7 +72,7 @@ export const mockScheduleItems: ScheduleItem[] = [
     batchNumber: "B2024-009",
     quantity: 1100,
     deliveryDate: "2024-12-30",
-    lineId: "SE85",
+    lineId: "SE-85",
   },
   {
     id: "10",

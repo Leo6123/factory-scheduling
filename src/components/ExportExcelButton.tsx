@@ -18,7 +18,8 @@ function getBlocksForExport(
   items: ScheduleItem[],
   lineConfigs: Record<string, LineConfig>,
   filterStartDate?: string,
-  filterEndDate?: string
+  filterEndDate?: string,
+  includeCleaningAndMaintenance: boolean = false
 ): ExportRow[] {
   const rows: ExportRow[] = [];
 
@@ -27,8 +28,8 @@ function getBlocksForExport(
     if (!item.scheduleDate || item.startHour === undefined) continue;
     if (item.lineId === "UNSCHEDULED") continue;
     
-    // 排除清機流程和故障維修
-    if (item.isCleaningProcess || item.isMaintenance) continue;
+    // 根據選項決定是否排除清機流程和故障維修
+    if (!includeCleaningAndMaintenance && (item.isCleaningProcess || item.isMaintenance)) continue;
 
     // 日期範圍篩選
     if (filterStartDate && item.scheduleDate < filterStartDate) continue;
@@ -159,9 +160,10 @@ export default function ExportExcelButton({
   
   const [exportStartDate, setExportStartDate] = useState(defaultStartDate);
   const [exportEndDate, setExportEndDate] = useState(defaultEndDate);
+  const [includeCleaningAndMaintenance, setIncludeCleaningAndMaintenance] = useState(false);
 
   const handleExport = () => {
-    const rows = getBlocksForExport(scheduleItems, lineConfigs, exportStartDate, exportEndDate);
+    const rows = getBlocksForExport(scheduleItems, lineConfigs, exportStartDate, exportEndDate, includeCleaningAndMaintenance);
 
     if (rows.length === 0) {
       alert("選擇的日期範圍內沒有已排程的項目");
@@ -221,16 +223,20 @@ export default function ExportExcelButton({
     setIsOpen(false);
   };
 
-  // 計算已排程項目數量（排除清機流程和故障維修）
+  // 計算已排程項目數量（根據選項決定是否包含清機流程和故障維修）
   const scheduledCount = scheduleItems.filter(
-    (item) => item.scheduleDate && item.startHour !== undefined && item.lineId !== "UNSCHEDULED" && !item.isCleaningProcess && !item.isMaintenance
+    (item) => {
+      if (!item.scheduleDate || item.startHour === undefined || item.lineId === "UNSCHEDULED") return false;
+      if (!includeCleaningAndMaintenance && (item.isCleaningProcess || item.isMaintenance)) return false;
+      return true;
+    }
   ).length;
 
-  // 計算選擇範圍內的項目數量（排除清機流程和故障維修）
+  // 計算選擇範圍內的項目數量（根據選項決定是否包含清機流程和故障維修）
   const filteredCount = scheduleItems.filter(
     (item) => {
       if (!item.scheduleDate || item.startHour === undefined || item.lineId === "UNSCHEDULED") return false;
-      if (item.isCleaningProcess || item.isMaintenance) return false;
+      if (!includeCleaningAndMaintenance && (item.isCleaningProcess || item.isMaintenance)) return false;
       if (exportStartDate && item.scheduleDate < exportStartDate) return false;
       if (exportEndDate && item.scheduleDate > exportEndDate) return false;
       return true;
@@ -293,6 +299,35 @@ export default function ExportExcelButton({
             className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded
                        text-white focus:border-green-500 focus:outline-none"
           />
+        </div>
+
+        {/* 清機/故障選項 */}
+        <div>
+          <label className="text-xs text-gray-400 block mb-2">包含選項</label>
+          <div className="flex gap-3">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name="cleaningMaintenance"
+                checked={!includeCleaningAndMaintenance}
+                onChange={() => setIncludeCleaningAndMaintenance(false)}
+                className="w-4 h-4 text-green-600 bg-gray-800 border-gray-600 
+                           focus:ring-green-500 focus:ring-2"
+              />
+              <span className="text-xs text-gray-300">不含清機/故障</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name="cleaningMaintenance"
+                checked={includeCleaningAndMaintenance}
+                onChange={() => setIncludeCleaningAndMaintenance(true)}
+                className="w-4 h-4 text-green-600 bg-gray-800 border-gray-600 
+                           focus:ring-green-500 focus:ring-2"
+              />
+              <span className="text-xs text-gray-300">含清機/故障</span>
+            </label>
+          </div>
         </div>
 
         {/* 篩選結果 */}

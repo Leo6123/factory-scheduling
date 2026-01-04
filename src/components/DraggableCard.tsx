@@ -340,6 +340,15 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
         </div>
       )}
       
+      {/* 如果是新增卡片功能創建的，顯示「新增」提示（獨立顯示，不依賴建議排程） */}
+      {item.id.startsWith('card-') && (
+        <div className="text-[10px] text-blue-300 mb-1">
+          <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded">
+            新增
+          </span>
+        </div>
+      )}
+      
       {/* 看配方 - 展開/收合 */}
       {item.recipeItems && item.recipeItems.length > 0 && (
         <div className="text-xs mb-1">

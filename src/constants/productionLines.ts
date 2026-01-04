@@ -12,12 +12,12 @@ export const PRODUCTION_LINES = [
   { id: "TS75", name: "TS75", color: "#EC4899" },      // pink
   { id: "HP40-1", name: "HP40-1", color: "#F97316" },    // orange
   { id: "HP40-2", name: "HP40-2", color: "#EAB308" },    // yellow
-  { id: "MAXX40", name: "MAXX40", color: "#22C55E" },  // green
+  { id: "40MAXX", name: "40MAXX", color: "#22C55E" },  // green
   { id: "TS58", name: "TS58", color: "#14B8A6" },      // teal
   { id: "50CC", name: "50CC", color: "#06B6D4" },      // cyan
-  { id: "MAXX50", name: "MAXX50", color: "#6366F1" },  // indigo
+  { id: "50MAXX", name: "50MAXX", color: "#6366F1" },  // indigo
   { id: "SE51", name: "SE51", color: "#A855F7" },      // purple
-  { id: "SE85", name: "SE85", color: "#F43F5E" },      // rose
+  { id: "SE-85", name: "SE-85", color: "#F43F5E" },      // rose
   { id: "CRYST", name: "結晶過程", color: "#78716C" }, // stone (gray-brown)
   { id: "CCD", name: "CCD色選", color: "#A3A3A3" },   // neutral gray
   { id: "DRYBLEND", name: "Dryblending", color: "#D97706" }, // amber
@@ -38,8 +38,8 @@ export type ProductionLineId = typeof PRODUCTION_LINES[number]["id"];
 
 // 計入月產能的產線 (排除結晶過程、CCD、Dryblending、Package、HS1-HS4、M600、H/C、小僑隆等)
 export const CAPACITY_LINES = [
-  "TS26", "27CC", "TS75", "HP40-1", "HP40-2", "MAXX40", 
-  "TS58", "50CC", "MAXX50", "SE51", "SE85"
+  "TS26", "27CC", "TS75", "HP40-1", "HP40-2", "40MAXX", 
+  "TS58", "50CC", "50MAXX", "SE51", "SE-85"
 ] as const;
 
 // 不計入產量與排程的產線（僅用於顯示和配置，不參與統計）

@@ -7,6 +7,7 @@ import DraggableCard from "./DraggableCard";
 import ImportExcelButton from "./ImportExcelButton";
 import ClearButton from "./ClearButton";
 import AddNGColorForm from "./AddNGColorForm";
+import AddCardForm from "./AddCardForm";
 import ExportExcelButton from "./ExportExcelButton";
 import SaveSnapshotButton from "./SaveSnapshotButton";
 import CleaningProcessForm from "./CleaningProcessForm";
@@ -107,6 +108,13 @@ export default function UnscheduledSidebar({
               onAdd={onAddItem} 
               existingBatchIds={existingBatchIds}
               allScheduleItems={allScheduleItems}
+            />
+          )}
+          
+          {/* 新增卡片表單 */}
+          {onAddItem && (
+            <AddCardForm 
+              onAdd={onAddItem}
             />
           )}
           

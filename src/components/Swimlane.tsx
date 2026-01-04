@@ -1416,6 +1416,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                       onMaterialReadyDateChange={handleMaterialReadyDateChange}
                       onToggleAbnormalIncomplete={handleToggleAbnormalIncomplete}
                       getBatchQCStatus={getBatchQCStatus}
+                      getSuggestedSchedule={getSuggestedSchedule}
                     />
                   );
                 })}

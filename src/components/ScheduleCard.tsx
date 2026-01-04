@@ -62,6 +62,15 @@ export default function ScheduleCard({ item, color }: ScheduleCardProps) {
       <div className="text-xs text-gray-400">
         <span className="text-gray-500">需求:</span> {item.deliveryDate}
       </div>
+      
+      {/* 如果是新增卡片功能創建的，顯示「新增」提示 */}
+      {item.id.startsWith('card-') && (
+        <div className="text-[10px] text-blue-300 mt-1">
+          <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded">
+            新增
+          </span>
+        </div>
+      )}
     </div>
   );
 }

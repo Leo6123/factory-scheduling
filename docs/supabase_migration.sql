@@ -23,3 +23,4 @@ ON suggested_schedules(material_number);
 -- WHERE table_name = 'schedule_items' 
 -- AND column_name IN ('material_ready_date', 'recipe_items');
 
+
