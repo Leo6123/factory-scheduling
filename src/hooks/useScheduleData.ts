@@ -112,11 +112,31 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
       
       if (retryWithoutMaterialReadyDate || retryWithoutRecipeItems) {
         console.log('🔄 重試儲存（不包含不存在的欄位）...');
+        console.log('排除欄位:', {
+          material_ready_date: retryWithoutMaterialReadyDate,
+          recipe_items: retryWithoutRecipeItems
+        });
+        
         dbItems = items.map(item => scheduleItemToDB(
           item, 
           !retryWithoutMaterialReadyDate,  // includeMaterialReadyDate
           !retryWithoutRecipeItems        // includeRecipeItems
         ));
+        
+        // 確保不包含被排除的欄位
+        dbItems = dbItems.map(item => {
+          const cleanItem: any = { ...item };
+          if (retryWithoutMaterialReadyDate) {
+            delete cleanItem.material_ready_date;
+          }
+          if (retryWithoutRecipeItems) {
+            delete cleanItem.recipe_items;
+          }
+          return cleanItem;
+        });
+        
+        console.log('📦 重試保存的資料（已排除不存在的欄位）:', dbItems.length, '筆');
+        console.log('範例資料結構:', dbItems[0] ? Object.keys(dbItems[0]) : '無資料');
         
         ({ data, error } = await supabase
           .from(TABLES.SCHEDULE_ITEMS)
@@ -129,6 +149,10 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
           console.log('📊 保存結果:', dataArray ? `${dataArray.length} 筆` : '無返回資料');
         } else {
           console.error('❌ 重試儲存仍然失敗:', error);
+          console.error('錯誤代碼:', error.code);
+          console.error('錯誤訊息:', error.message);
+          console.error('\n⚠️ 建議：在 Supabase SQL Editor 執行 supabase_add_missing_columns.sql 腳本');
+          console.error('   這會自動添加缺失的欄位：material_ready_date 和 recipe_items');
         }
       }
     }
