@@ -37,27 +37,69 @@ export default function SaveSnapshotButton({
     setHasSnapshot(checkSnapshot());
   }, []);
 
-  // 測試 Supabase 連接
+  // 測試 Supabase 連接和權限
   const testSupabaseConnection = async () => {
     const { supabase, TABLES } = await import('@/lib/supabase');
     if (!supabase) {
       console.error('❌ Supabase 客戶端未初始化');
+      console.error('請檢查環境變數：NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY');
       return false;
     }
     
     try {
       // 測試讀取權限
-      const { data, error } = await supabase
+      console.log('🔍 測試讀取權限...');
+      const { data: readData, error: readError } = await supabase
         .from(TABLES.SCHEDULE_ITEMS)
         .select('id')
         .limit(1);
       
-      if (error) {
-        console.error('❌ Supabase 讀取測試失敗:', error);
+      if (readError) {
+        console.error('❌ Supabase 讀取測試失敗:', readError);
+        console.error('錯誤代碼:', readError.code);
+        console.error('錯誤訊息:', readError.message);
+        if (readError.code === 'PGRST301' || readError.message?.includes('RLS')) {
+          console.error('⚠️ 可能是 RLS (Row Level Security) 政策問題');
+          console.error('請在 Supabase SQL Editor 執行 supabase_rls_policy.sql 腳本');
+        }
         return false;
       }
       
-      console.log('✅ Supabase 連接正常，讀取權限 OK');
+      console.log('✅ 讀取權限 OK');
+      
+      // 測試寫入權限（使用一個測試 ID）
+      console.log('🔍 測試寫入權限...');
+      const testId = `test-${Date.now()}`;
+      const { error: writeError } = await supabase
+        .from(TABLES.SCHEDULE_ITEMS)
+        .upsert({
+          id: testId,
+          product_name: 'TEST',
+          batch_number: 'TEST',
+          quantity: 0,
+          delivery_date: '2026-01-01',
+          line_id: 'TEST',
+        }, { onConflict: 'id' });
+      
+      if (writeError) {
+        console.error('❌ Supabase 寫入測試失敗:', writeError);
+        console.error('錯誤代碼:', writeError.code);
+        console.error('錯誤訊息:', writeError.message);
+        if (writeError.code === 'PGRST301' || writeError.message?.includes('RLS')) {
+          console.error('⚠️ 可能是 RLS (Row Level Security) 政策問題');
+          console.error('請在 Supabase SQL Editor 執行 supabase_rls_policy.sql 腳本');
+        }
+        return false;
+      }
+      
+      // 刪除測試資料
+      await supabase
+        .from(TABLES.SCHEDULE_ITEMS)
+        .delete()
+        .eq('id', testId);
+      
+      console.log('✅ 寫入權限 OK');
+      console.log('✅ Supabase 連接正常，所有權限 OK');
       return true;
     } catch (err) {
       console.error('❌ Supabase 連接測試異常:', err);
