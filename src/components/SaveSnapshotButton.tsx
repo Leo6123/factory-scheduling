@@ -136,12 +136,54 @@ export default function SaveSnapshotButton({
         alert('✅ 存檔成功！已保存到資料庫');
       } else {
         console.error('❌ 保存到資料庫失敗');
-        console.error('請檢查：');
-        console.error('1. 瀏覽器控制台的錯誤訊息');
-        console.error('2. Supabase RLS (Row Level Security) 政策設定');
-        console.error('3. 資料庫表格是否存在');
+        console.error('═══════════════════════════════════════');
+        console.error('請檢查以下項目：');
+        console.error('1. 瀏覽器控制台是否有 Supabase 錯誤訊息（上方）');
+        console.error('2. Supabase RLS (Row Level Security) 政策是否設定');
+        console.error('   執行步驟：');
+        console.error('   a. 在 Supabase Dashboard 點擊 SQL Editor');
+        console.error('   b. 執行 supabase_rls_policy.sql 腳本');
+        console.error('3. 環境變數是否正確設定（Vercel）');
         console.error('4. 網路連線是否正常');
-        alert('⚠️ 存檔成功（已保存到本地），但資料庫保存失敗\n\n請開啟瀏覽器控制台 (F12) 查看詳細錯誤訊息');
+        console.error('═══════════════════════════════════════');
+        
+        // 嘗試獲取更詳細的錯誤資訊
+        const { supabase, TABLES } = await import('@/lib/supabase');
+        if (supabase) {
+          // 測試寫入權限
+          const testResult = await supabase
+            .from(TABLES.SCHEDULE_ITEMS)
+            .insert({ 
+              id: `test-${Date.now()}`, 
+              product_name: 'TEST', 
+              batch_number: 'TEST', 
+              quantity: 0, 
+              delivery_date: '2026-01-01', 
+              line_id: 'TEST' 
+            })
+            .select();
+          
+          if (testResult.error) {
+            console.error('🔍 詳細錯誤資訊：');
+            console.error('錯誤代碼:', testResult.error.code);
+            console.error('錯誤訊息:', testResult.error.message);
+            console.error('錯誤詳情:', JSON.stringify(testResult.error, null, 2));
+            
+            if (testResult.error.code === 'PGRST301' || testResult.error.message?.includes('RLS') || testResult.error.message?.includes('permission')) {
+              console.error('⚠️ 這是 RLS 政策問題！');
+              console.error('解決方法：在 Supabase SQL Editor 執行以下 SQL：');
+              console.error(`
+CREATE POLICY "Allow all operations on schedule_items"
+ON public.schedule_items
+FOR ALL
+USING (true)
+WITH CHECK (true);
+              `);
+            }
+          }
+        }
+        
+        alert('⚠️ 存檔成功（已保存到本地），但資料庫保存失敗\n\n請開啟瀏覽器控制台 (F12) 查看詳細錯誤訊息和解決步驟');
       }
     } catch (error) {
       console.error('存檔失敗:', error);
