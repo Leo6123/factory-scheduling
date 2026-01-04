@@ -66,14 +66,18 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
   saveToLocalStorage(items);
 
   if (!supabase) {
+    console.warn('⚠️ Supabase 客戶端未初始化，僅保存到 localStorage');
     return true; // 僅使用 localStorage
   }
+
+  console.log(`💾 開始保存 ${items.length} 筆資料到 Supabase...`);
 
   try {
     // 先嘗試包含所有欄位（material_ready_date 和 recipe_items）
     let dbItems = items.map(item => scheduleItemToDB(item, true, true));
+    console.log('📦 準備保存的資料:', dbItems.length, '筆');
     
-    let { error } = await supabase
+    let { data, error } = await supabase
       .from(TABLES.SCHEDULE_ITEMS)
       .upsert(dbItems, { onConflict: 'id' });
 
@@ -113,22 +117,30 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
           !retryWithoutRecipeItems        // includeRecipeItems
         ));
         
-        ({ error } = await supabase
+        ({ data, error } = await supabase
           .from(TABLES.SCHEDULE_ITEMS)
           .upsert(dbItems, { onConflict: 'id' }));
         
         if (!error) {
           console.log('✅ 重試儲存成功（不包含不存在的欄位）');
+          console.log('📊 保存結果:', data ? `${data.length} 筆` : '無返回資料');
+        } else {
+          console.error('❌ 重試儲存仍然失敗:', error);
         }
       }
     }
 
     if (error) {
-      console.error('儲存排程項目失敗:', error);
+      console.error('❌ 儲存排程項目失敗:', error);
+      console.error('錯誤代碼:', error.code);
+      console.error('錯誤訊息:', error.message);
       console.error('錯誤詳情:', JSON.stringify(error, null, 2));
+      console.error('嘗試保存的資料筆數:', items.length);
       return false;
     }
 
+    console.log('✅ 成功保存到 Supabase 資料庫');
+    console.log('📊 保存結果:', data ? `${data.length} 筆` : '無返回資料');
     return true;
   } catch (error) {
     console.error('儲存排程項目異常:', error);

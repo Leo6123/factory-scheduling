@@ -37,6 +37,34 @@ export default function SaveSnapshotButton({
     setHasSnapshot(checkSnapshot());
   }, []);
 
+  // 測試 Supabase 連接
+  const testSupabaseConnection = async () => {
+    const { supabase, TABLES } = await import('@/lib/supabase');
+    if (!supabase) {
+      console.error('❌ Supabase 客戶端未初始化');
+      return false;
+    }
+    
+    try {
+      // 測試讀取權限
+      const { data, error } = await supabase
+        .from(TABLES.SCHEDULE_ITEMS)
+        .select('id')
+        .limit(1);
+      
+      if (error) {
+        console.error('❌ Supabase 讀取測試失敗:', error);
+        return false;
+      }
+      
+      console.log('✅ Supabase 連接正常，讀取權限 OK');
+      return true;
+    } catch (err) {
+      console.error('❌ Supabase 連接測試異常:', err);
+      return false;
+    }
+  };
+
   // 保存快照
   const handleSave = async () => {
     if (typeof window === 'undefined') return;
@@ -49,7 +77,15 @@ export default function SaveSnapshotButton({
       setHasSnapshot(true);
       setShowConfirm(false);
       
+      // 測試 Supabase 連接
+      const connectionOk = await testSupabaseConnection();
+      if (!connectionOk) {
+        alert('⚠️ Supabase 連接測試失敗\n\n請檢查：\n1. 環境變數是否正確設定\n2. Supabase 專案是否正常運行\n3. 瀏覽器控制台 (F12) 的錯誤訊息');
+        return;
+      }
+      
       // 同時保存到 Supabase 資料庫
+      console.log('💾 開始保存到 Supabase，資料筆數:', scheduleItems.length);
       const { saveScheduleItemsToDB } = await import('@/hooks/useScheduleData');
       const dbSuccess = await saveScheduleItemsToDB(scheduleItems);
       
@@ -57,8 +93,13 @@ export default function SaveSnapshotButton({
         console.log('✅ 已保存到 Supabase 資料庫');
         alert('✅ 存檔成功！已保存到資料庫');
       } else {
-        console.warn('⚠️ 保存到資料庫失敗，但已保存到本地');
-        alert('✅ 存檔成功（已保存到本地，但資料庫保存失敗，請檢查網路連線或資料庫欄位）');
+        console.error('❌ 保存到資料庫失敗');
+        console.error('請檢查：');
+        console.error('1. 瀏覽器控制台的錯誤訊息');
+        console.error('2. Supabase RLS (Row Level Security) 政策設定');
+        console.error('3. 資料庫表格是否存在');
+        console.error('4. 網路連線是否正常');
+        alert('⚠️ 存檔成功（已保存到本地），但資料庫保存失敗\n\n請開啟瀏覽器控制台 (F12) 查看詳細錯誤訊息');
       }
     } catch (error) {
       console.error('存檔失敗:', error);
