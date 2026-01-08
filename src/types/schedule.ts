@@ -38,6 +38,7 @@ export interface ScheduleItem {
   customer?: string;             // Customer 文字
   salesDocument?: string;        // Sales document 數字
   recipeItems?: import('./recipe').RecipeItem[];  // 配方項目列表
+  remark?: string;              // Remark 備註
 }
 
 // 跨日區塊顯示用 (非儲存用)

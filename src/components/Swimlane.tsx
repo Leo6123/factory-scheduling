@@ -237,7 +237,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   }, []);
   const [viewMode, setViewMode] = useState<"card" | "timeline">("timeline");
   const [dropPreview, setDropPreview] = useState<{ lineId: string; hour: number } | null>(null);
-  const [cardDayRange, setCardDayRange] = useState<1 | 3 | 5 | 7>(3); // 卡片模式的日期範圍
+  const [cardDayRange, setCardDayRange] = useState<1 | 15 | 30 | 31>(1); // 卡片模式的日期範圍
   
   // Google Sheets QC 狀態連動
   // 從環境變數取得 Google Sheet ID，或使用預設值
@@ -1020,17 +1020,38 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   }, [scheduleItems, selectedDateStr, lineConfigs]);
 
   // 取得日期範圍內的日期字串陣列
-  const getDateRange = (days: number): string[] => {
+  const getDateRange = (days: 1 | 15 | 30 | 31): string[] => {
     if (!selectedDay) return [];
     const dates: string[] = [];
-    for (let i = 0; i < days; i++) {
-      const date = new Date(selectedYear, selectedMonth - 1, selectedDay + i);
-      // 使用本地日期格式，避免 toISOString 時區問題
+    
+    if (days === 1) {
+      // 1日：只顯示選中日期當天的卡片
+      const date = new Date(selectedYear, selectedMonth - 1, selectedDay);
       const y = date.getFullYear();
       const m = String(date.getMonth() + 1).padStart(2, "0");
       const d = String(date.getDate()).padStart(2, "0");
       dates.push(`${y}-${m}-${d}`);
+    } else if (days === 15) {
+      // 15日：顯示 1-15 日的所有卡片
+      for (let day = 1; day <= 15; day++) {
+        const date = new Date(selectedYear, selectedMonth - 1, day);
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        dates.push(`${y}-${m}-${d}`);
+      }
+    } else {
+      // 30日或31日：顯示當月 1 日到最後一日的所有卡片
+      const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(selectedYear, selectedMonth - 1, day);
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        dates.push(`${y}-${m}-${d}`);
+      }
     }
+    
     return dates;
   };
 
@@ -1043,7 +1064,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
 
   // 取得日期範圍內的項目 - 用於卡片模式 (包含跨日延續的訂單)
   // 使用與時間軸相同的邏輯 (getBlocksForDate)
-  const getLineItemsForDateRange = (lineId: string, days: number) => {
+  const getLineItemsForDateRange = (lineId: string, days: 1 | 15 | 30 | 31) => {
     const dateRange = getDateRange(days);
     const visibleItemIds = new Set<string>();
     
@@ -1238,38 +1259,54 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
               </div>
 
               {/* 卡片模式日期範圍選項 */}
-              {viewMode === "card" && (
-                <div className="flex items-center gap-1 ml-2 border-l border-white/10 pl-3">
-                  <span className="text-xs text-gray-500 mr-1">日期範圍:</span>
-                  {([1, 3, 5, 7] as const).map((days) => (
-                    <button
-                      key={days}
-                      onClick={() => setCardDayRange(days)}
-                      className={`px-2 py-1 text-xs rounded transition-all
-                                 ${cardDayRange === days
-                                   ? "bg-emerald-600 text-white"
-                                   : "bg-white/10 text-gray-400 hover:bg-white/20"}`}
-                    >
-                      {`${days}日`}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {viewMode === "card" && (() => {
+                // 計算當月天數（30 或 31）
+                const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+                const monthEndDay = daysInMonth === 30 ? 30 : 31;
+                
+                // 日期範圍選項：1日, 15日, 30日或31日
+                const dayRangeOptions: (1 | 15 | 30 | 31)[] = [1, 15, monthEndDay];
+                
+                return (
+                  <div className="flex items-center gap-1 ml-2 border-l border-white/10 pl-3">
+                    <span className="text-xs text-gray-500 mr-1">日期範圍:</span>
+                    {dayRangeOptions.map((days) => (
+                      <button
+                        key={days}
+                        onClick={() => setCardDayRange(days)}
+                        className={`px-2 py-1 text-xs rounded transition-all
+                                   ${cardDayRange === days
+                                     ? "bg-emerald-600 text-white"
+                                     : "bg-white/10 text-gray-400 hover:bg-white/20"}`}
+                      >
+                        {`${days}日`}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {selectedDay && (
                 <span className="text-sm text-blue-400 font-medium">
-                  📅 {selectedMonth}/{selectedDay}
-                  {viewMode === "card" && cardDayRange > 1 && (() => {
-                    // 計算結束日期
-                    const endDay = selectedDay + cardDayRange - 1;
-                    // 獲取當月最後一天
-                    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-                    // 如果超過當月最後一天，使用最後一天
-                    const displayEndDay = Math.min(endDay, daysInMonth);
-                    return (
-                      <span className="text-emerald-400"> ~ {selectedMonth}/{displayEndDay}</span>
-                    );
-                  })()}
+                  {viewMode === "card" && cardDayRange > 1 ? (
+                    // 卡片模式：顯示日期範圍
+                    cardDayRange === 15 ? (
+                      // 15日：顯示 1-15 日
+                      <span>
+                        📅 {selectedMonth}/1 ~ {selectedMonth}/15
+                      </span>
+                    ) : (
+                      // 30日或31日：顯示當月 1 日到最後一日
+                      <span>
+                        📅 {selectedMonth}/1 ~ {selectedMonth}/{cardDayRange}
+                      </span>
+                    )
+                  ) : (
+                    // 時間軸模式或1日：顯示選中的日期
+                    <span>
+                      📅 {selectedMonth}/{selectedDay}
+                    </span>
+                  )}
                 </span>
               )}
             </div>

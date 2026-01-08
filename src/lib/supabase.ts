@@ -51,6 +51,7 @@ export function scheduleItemToDB(item: ScheduleItem, includeMaterialReadyDate: b
     process_order: item.processOrder || null,
     customer: item.customer || null,
     sales_document: item.salesDocument || null,
+    remark: item.remark || null,
     // updated_at 由資料庫觸發器自動處理，不需要手動設定
   };
   
@@ -92,6 +93,7 @@ export function dbToScheduleItem(row: any): ScheduleItem {
     processOrder: row.process_order || undefined,
     customer: row.customer || undefined,
     salesDocument: row.sales_document || undefined,
+    remark: row.remark || undefined,
     recipeItems: row.recipe_items 
       ? (Array.isArray(row.recipe_items) 
           ? row.recipe_items 

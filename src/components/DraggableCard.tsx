@@ -407,6 +407,14 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
           )}
         </div>
       )}
+      
+      {/* Remark - 顯示在「看配方」下方 */}
+      {item.remark !== undefined && item.remark !== null && item.remark !== "" && (
+        <div className="text-xs mb-1">
+          <span className="text-gray-500">Remark:</span>{" "}
+          <span className="text-gray-300">{item.remark}</span>
+        </div>
+      )}
 
       {/* 勾選選項 - 清機流程、故障維修和混合缸排程不顯示 */}
       {!item.isCleaningProcess && !item.isMaintenance && item.materialDescription !== "混合缸排程" && (onToggleCrystallization || onToggleCCD || onToggleDryblending || onTogglePackage || onToggle2Press || onToggle3Press || onToggleAbnormalIncomplete) && (

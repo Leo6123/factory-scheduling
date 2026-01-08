@@ -29,6 +29,8 @@ export const PRODUCTION_LINES = [
   { id: "M600", name: "M600", color: "#F59E0B" },  // amber
   { id: "HC", name: "H/C", color: "#EF4444" },  // red
   { id: "XIAOQIAOLONG", name: "小僑隆", color: "#8B5CF6" },  // violet
+  { id: "GRINDING", name: "磨粉", color: "#92400E" },  // brown
+  { id: "LABORATORY", name: "實驗室", color: "#0EA5E9" },  // sky blue
 ] as const;
 
 // 所有泳道 (含未排程)
@@ -45,7 +47,7 @@ export const CAPACITY_LINES = [
 // 不計入產量與排程的產線（僅用於顯示和配置，不參與統計）
 export const NON_CAPACITY_LINES = [
   "CRYST", "CCD", "DRYBLEND", "PACKAGE", 
-  "HS1", "HS2", "HS3", "HS4", "M600", "HC", "XIAOQIAOLONG"
+  "HS1", "HS2", "HS3", "HS4", "M600", "HC", "XIAOQIAOLONG", "GRINDING", "LABORATORY"
 ] as const;
 
 // 混合缸卡片允許的產線（只能排到這些產線）

@@ -64,13 +64,20 @@ function parseQuantity(value: number | string | undefined): number {
 // 取得欄位值 (支援多種欄位名稱，模糊匹配)
 function getFieldValue(row: ExcelRow, ...fieldNames: string[]): string | number | Date | undefined {
   for (const name of fieldNames) {
-    // 完全匹配
+    const nameLower = name.toLowerCase().trim();
+    
+    // 完全匹配（考慮大小寫和空格）
     if (row[name] !== undefined) return row[name];
     
-    // 模糊匹配：欄位名稱開頭匹配
+    // 模糊匹配：欄位名稱開頭匹配（考慮大小寫和空格）
     for (const key of Object.keys(row)) {
-      if (key.toLowerCase().startsWith(name.toLowerCase()) || 
-          name.toLowerCase().startsWith(key.toLowerCase())) {
+      const keyLower = key.toLowerCase().trim();
+      // 完全匹配（忽略大小寫和空格）
+      if (keyLower === nameLower) {
+        if (row[key] !== undefined) return row[key];
+      }
+      // 開頭匹配
+      if (keyLower.startsWith(nameLower) || nameLower.startsWith(keyLower)) {
         if (row[key] !== undefined) return row[key];
       }
     }
@@ -92,12 +99,28 @@ export async function parseExcelFile(
         const data = e.target?.result;
         const workbook = XLSX.read(data, { type: "array" });
         
+        // 調試：顯示所有工作表名稱
+        console.log('[Excel Parser] Excel 工作表名稱:', workbook.SheetNames);
+        if (workbook.SheetNames.length > 1) {
+          console.warn('[Excel Parser] ⚠️ Excel 有多個工作表，目前只讀取第一個工作表:', workbook.SheetNames[0]);
+        }
+        
         // 讀取第一個工作表
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
         // 轉換為 JSON (標題在第 1 行，直接使用預設設定)
-        const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet);
+        // 使用 defval: "" 確保空欄位也會被讀取
+        const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, {
+          defval: "", // 空值預設為空字串，確保所有欄位都被讀取
+          raw: false, // 不保留原始值，統一轉換為字串
+        });
+        
+        // 調試：檢查第一行資料，確認所有欄位
+        if (jsonData.length > 0) {
+          console.log('[Excel Parser] 第一行資料的欄位數量:', Object.keys(jsonData[0]).length);
+          console.log('[Excel Parser] 第一行資料的所有欄位:', Object.keys(jsonData[0]));
+        }
         
         // 第一步：收集所有配方資料（按 Material Number 分組）
         const recipeMap = new Map<string, RecipeItem[]>();
@@ -216,6 +239,52 @@ export async function parseExcelFile(
           const salesDocValue = getFieldValue(row, "Sales document", "Sales doc", "Sales d");
           const salesDocument = salesDocValue ? String(salesDocValue).trim() : undefined;
           
+          // 讀取 Remark 欄位
+          // 調試：先檢查 Excel 中所有欄位名稱（只輸出一次）
+          if (index === 0) {
+            const allKeys = Object.keys(row);
+            console.log('[Excel Parser] Excel 欄位名稱 (共 ' + allKeys.length + ' 個):');
+            allKeys.forEach((key, idx) => {
+              console.log(`  [${idx + 1}] "${key}"`);
+            });
+            // 特別檢查是否有包含 "remark" 或 "備註" 的欄位
+            const remarkLikeKeys = allKeys.filter(key => 
+              key.toLowerCase().includes('remark') || 
+              key.toLowerCase().includes('備註') ||
+              key.toLowerCase().includes('remark')
+            );
+            if (remarkLikeKeys.length > 0) {
+              console.log('[Excel Parser] 找到可能的 Remark 相關欄位:', remarkLikeKeys);
+            } else {
+              console.warn('[Excel Parser] ⚠️ 未找到任何包含 "remark" 或 "備註" 的欄位');
+            }
+          }
+          
+          const remarkValue = getFieldValue(row, "Remark", "Remarks", "備註", "備註欄");
+          let remark: string | undefined = undefined;
+          
+          // 調試：記錄原始值（前3筆）
+          if (index < 3) {
+            console.log(`[Excel Parser] Remark 原始值 (批號: ${batchNumber}):`, remarkValue, '類型:', typeof remarkValue);
+          }
+          
+          if (remarkValue !== undefined && remarkValue !== null) {
+            const remarkStr = String(remarkValue).trim();
+            // 保留所有值，包括 "#N/A" 和空字串（讓用戶知道欄位有被讀取）
+            // 即使值是 "#N/A" 或空字串，也應該設置 remark，這樣卡片上可以顯示
+            remark = remarkStr || "#N/A"; // 如果是空字串，設置為 "#N/A"
+            
+            // 調試：記錄解析到的 Remark（前3筆）
+            if (index < 3) {
+              console.log(`[Excel Parser] ✅ 解析到 Remark: "${remark}" (批號: ${batchNumber})`);
+            }
+          } else {
+            // 調試：記錄未找到 Remark 欄位（只記錄第一筆）
+            if (index === 0) {
+              console.warn(`[Excel Parser] ⚠️ 未找到 Remark 欄位，嘗試的欄位名稱: "Remark", "Remarks", "備註", "備註欄"`);
+            }
+          }
+          
           // 取得對應的配方資料
           const productNameStr = String(productName).trim();
           const recipeItems = recipeMap.get(productNameStr) || undefined;
@@ -233,6 +302,7 @@ export async function parseExcelFile(
             customer,
             salesDocument,
             recipeItems, // 加入配方資料
+            remark, // 加入 Remark
           });
         }
         

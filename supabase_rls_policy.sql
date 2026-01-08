@@ -74,3 +74,4 @@ SELECT
 FROM pg_policies
 WHERE tablename = 'schedule_items';
 
+
