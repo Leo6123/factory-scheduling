@@ -39,35 +39,103 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
       return;
     }
 
+    // 設定超時保護（30 秒）
+    const TIMEOUT_MS = 30000;
+    let timeoutId: NodeJS.Timeout | null = null;
+    let isCompleted = false;
+
+    // 確保在函數結束時清理狀態
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (!isCompleted) {
+        isCompleted = true;
+        setIsLoading(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      }
+    };
+
     try {
-      const result: SuggestedScheduleImportResult = await parseSuggestedScheduleExcel(file);
+      // 創建超時 Promise
+      const createTimeout = (message: string) => {
+        return new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(message));
+          }, TIMEOUT_MS);
+        });
+      };
+
+      // 解析 Excel 檔案（帶超時保護）
+      console.log('📄 開始解析 Excel 檔案...', file.name, `(${(file.size / 1024).toFixed(2)} KB)`);
+      const parsePromise = parseSuggestedScheduleExcel(file);
+      const result: SuggestedScheduleImportResult = await Promise.race([
+        parsePromise,
+        createTimeout('解析 Excel 檔案超時（30 秒），檔案可能過大或格式錯誤'),
+      ]);
+
+      // 清除第一個超時
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      console.log('✅ Excel 解析完成，找到', result.schedules.length, '筆資料');
       
       if (result.schedules.length === 0) {
         setError("Excel 檔案中沒有找到有效資料");
-      } else {
-        const success = await onImport(result.schedules);
-        
-        if (success) {
-          // 顯示匯入結果
-          let message = `成功匯入 ${result.importedCount} 筆建議排程`;
-          if (result.errorCount > 0) {
-            message += `\n有 ${result.errorCount} 筆資料解析失敗`;
-          }
-          message += `\n\n資料已自動儲存`;
-          alert(message);
-        } else {
-          // 這個情況理論上不會發生，因為 importSchedules 現在總是返回 true
-          setError("匯入失敗，請檢查控制台錯誤訊息");
+        cleanup();
+        return;
+      }
+
+      // 匯入資料（帶超時保護）
+      console.log('💾 開始匯入', result.schedules.length, '筆資料到資料庫...');
+      const importPromise = onImport(result.schedules);
+      const success = await Promise.race([
+        importPromise,
+        createTimeout('匯入資料超時（30 秒），請檢查網路連線或 Supabase 狀態'),
+      ]);
+
+      // 清除超時
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      isCompleted = true;
+
+      if (success) {
+        // 顯示匯入結果
+        let message = `✅ 成功匯入 ${result.importedCount} 筆建議排程`;
+        if (result.errorCount > 0) {
+          message += `\n⚠️ 有 ${result.errorCount} 筆資料解析失敗`;
         }
+        message += `\n\n資料已自動儲存`;
+        alert(message);
+        console.log('✅ 匯入完成，共', result.importedCount, '筆');
+      } else {
+        setError("匯入失敗，請檢查控制台錯誤訊息");
+        console.error('❌ 匯入失敗，onImport 返回 false');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "匯入失敗");
-    } finally {
-      setIsLoading(false);
-      // 清空 input 以便重複選擇同一檔案
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      isCompleted = true;
+      console.error('❌ 匯入錯誤:', err);
+      
+      const errorMessage = err instanceof Error ? err.message : "匯入失敗";
+      setError(errorMessage);
+      
+      // 顯示錯誤訊息給用戶
+      if (errorMessage.includes('超時')) {
+        alert(`⏱️ ${errorMessage}\n\n請嘗試：\n1. 檢查網路連線\n2. 確認 Supabase 狀態\n3. 嘗試使用較小的檔案\n4. 重新整理頁面後再試`);
+      } else {
+        alert(`❌ 匯入失敗：${errorMessage}\n\n請檢查：\n1. Excel 檔案格式是否正確\n2. 網路連線是否正常\n3. 檔案大小是否過大（最大 5MB）\n\n詳細錯誤請查看瀏覽器控制台 (F12)`);
       }
+    } finally {
+      // 確保 loading 狀態被重置（即使發生異常）
+      cleanup();
     }
   };
 

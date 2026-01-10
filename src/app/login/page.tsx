@@ -27,12 +27,26 @@ export default function LoginPage() {
     try {
       const { error } = await signIn(email, password);
       if (error) {
-        setError(error.message || '登入失敗，請檢查帳號密碼');
+        // 提供更詳細的錯誤訊息
+        let errorMessage = error.message || '登入失敗，請檢查帳號密碼';
+        
+        if (error.message?.includes('Invalid login credentials') || 
+            error.message?.includes('invalid_credentials')) {
+          errorMessage = '登入失敗：帳號或密碼錯誤\n\n' +
+            '可能原因：\n' +
+            '1. 用戶尚未在 Supabase 中建立帳號\n' +
+            '2. 密碼輸入錯誤\n\n' +
+            '解決方法：請在 Supabase Dashboard > Authentication > Users 中建立用戶帳號';
+        }
+        
+        setError(errorMessage);
+        console.error('登入錯誤:', error);
       } else {
         router.push('/');
       }
     } catch (err: any) {
       setError(err.message || '登入失敗，請稍後再試');
+      console.error('登入異常:', err);
     } finally {
       setLoading(false);
     }

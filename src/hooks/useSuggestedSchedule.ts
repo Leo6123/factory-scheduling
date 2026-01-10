@@ -106,13 +106,25 @@ async function loadSuggestedSchedulesFromDB(): Promise<SuggestedScheduleMap> {
 async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promise<boolean> {
   // 先儲存到 localStorage 作為備用（無論資料庫是否成功）
   saveToLocalStorage(schedules);
+  console.log('💾 已儲存到 localStorage，共', schedules.length, '筆');
 
   if (!supabase) {
-    console.log('Supabase 未設定，僅使用 localStorage 儲存建議排程');
+    console.log('⚠️ Supabase 未設定，僅使用 localStorage 儲存建議排程');
     return true; // 僅使用 localStorage
   }
 
+  // 設定超時保護（20 秒）
+  const TIMEOUT_MS = 20000;
+  let timeoutId: NodeJS.Timeout | null = null;
+
   try {
+    // 創建超時 Promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('Supabase 儲存超時（20 秒），資料已儲存到本地'));
+      }, TIMEOUT_MS);
+    });
+
     // 轉換為資料庫格式
     const dbItems = schedules.map((schedule) => ({
       material_number: schedule.materialNumber,
@@ -120,14 +132,28 @@ async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promi
       last_updated: schedule.lastUpdated || new Date().toISOString(),
     }));
 
-    // 使用 upsert 更新或插入
-    const { error } = await supabase
+    console.log('📤 開始儲存', dbItems.length, '筆到 Supabase...');
+
+    // 使用 upsert 更新或插入（帶超時保護）
+    const upsertPromise = supabase
       .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
       .upsert(dbItems, { onConflict: 'material_number' });
 
+    const { error } = await Promise.race([
+      upsertPromise.then(result => result),
+      timeoutPromise,
+    ]) as { error: any };
+
+    // 清除超時
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+
     if (error) {
-      console.error('儲存建議排程到 Supabase 失敗:', error);
-      console.error('錯誤詳情:', JSON.stringify(error, null, 2));
+      console.error('❌ 儲存建議排程到 Supabase 失敗:', error);
+      console.error('錯誤代碼:', error.code);
+      console.error('錯誤訊息:', error.message);
       // 即使 Supabase 失敗，localStorage 已保存，所以返回 true
       console.warn('⚠️ 資料已儲存到 localStorage，但 Supabase 儲存失敗');
       return true; // 因為 localStorage 已保存，所以返回 true
@@ -135,10 +161,23 @@ async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promi
 
     console.log(`✅ 成功儲存 ${schedules.length} 筆建議排程到 Supabase`);
     return true;
-  } catch (error) {
-    console.error('儲存建議排程異常:', error);
+  } catch (error: any) {
+    // 清除超時
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+
+    console.error('❌ 儲存建議排程異常:', error);
+    
+    // 檢查是否是超時錯誤
+    if (error.message?.includes('超時')) {
+      console.warn('⚠️ Supabase 儲存超時，資料已儲存到 localStorage');
+    } else {
+      console.warn('⚠️ 資料已儲存到 localStorage，但 Supabase 儲存異常');
+    }
+    
     // 即使異常，localStorage 已保存，所以返回 true
-    console.warn('⚠️ 資料已儲存到 localStorage，但 Supabase 儲存異常');
     return true; // 因為 localStorage 已保存，所以返回 true
   }
 }
