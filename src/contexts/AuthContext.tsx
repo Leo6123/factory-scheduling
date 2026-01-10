@@ -25,18 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 從 Supabase 用戶獲取角色（從資料庫 user_profiles 表或使用默認角色）
   const getUserRole = async (supabaseUser: SupabaseUser): Promise<UserRole> => {
     if (!supabase) {
-      console.warn('Supabase 未初始化，使用默認角色 viewer');
+      console.warn('⚠️ Supabase 未初始化，使用默認角色 viewer');
       return 'viewer';
     }
 
-    // 設定超時保護（10 秒）
-    const TIMEOUT_MS = 10000;
+    // 設定超時保護（5 秒，縮短超時時間）
+    const TIMEOUT_MS = 5000;
     
     try {
+      console.log('🔍 開始獲取用戶角色，用戶 ID:', supabaseUser.id);
+      
       // 創建超時 Promise
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
-          reject(new Error('獲取用戶角色超時（10 秒），使用默認角色'));
+          reject(new Error('獲取用戶角色超時（5 秒），使用默認角色'));
         }, TIMEOUT_MS);
       });
 
@@ -47,79 +49,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', supabaseUser.id)
         .single();
 
-      const { data, error } = await Promise.race([
-        queryPromise.then(result => result),
+      const result = await Promise.race([
+        queryPromise,
         timeoutPromise,
       ]) as { data: any; error: any };
 
-      if (error) {
-        // 如果表不存在或查詢失敗，檢查是否是表不存在的錯誤
-        if (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('relation')) {
-          console.warn('⚠️ user_profiles 表不存在，使用默認角色 operator');
-          return 'operator'; // 表不存在時使用默認角色
-        }
+      // 清除超時（實際上 Promise.race 會自動處理）
+      
+      if (result.error) {
+        console.warn('⚠️ 查詢 user_profiles 失敗:', result.error.message);
         
-        // 如果是超時或權限錯誤，使用默認角色
-        if (error.message?.includes('超時') || error.code === 'PGRST301' || error.message?.includes('permission') || error.message?.includes('RLS')) {
-          console.warn('⚠️ 無法獲取用戶角色（可能是 RLS 政策問題），使用默認角色:', error.message);
-          // 檢查是否是第一個用戶（通過查詢用戶數量，但不等待太久）
-          try {
-            const countPromise = supabase
-              .from('user_profiles')
-              .select('id', { count: 'exact', head: true });
-            
-            const countResult = await Promise.race([
-              countPromise,
-              new Promise<{ count: number }>((resolve) => {
-                setTimeout(() => resolve({ count: 1 }), 2000); // 2 秒超時
-              }),
-            ]) as any;
-            
-            if (countResult?.count === 0 || !countResult?.count) {
-              console.log('✅ 這是第一個用戶，設為管理員');
-              return 'admin'; // 第一個用戶為管理員
-            }
-          } catch (checkError) {
-            // 查詢失敗，使用默認角色
-            console.warn('檢查用戶數量失敗，使用默認角色 operator');
-          }
-          return 'operator'; // 默認角色
+        // 如果是表不存在或權限錯誤，立即返回默認角色，不嘗試其他查詢
+        if (result.error.code === '42P01' || 
+            result.error.message?.includes('does not exist') || 
+            result.error.message?.includes('relation') ||
+            result.error.code === 'PGRST301' || 
+            result.error.message?.includes('permission') || 
+            result.error.message?.includes('RLS')) {
+          console.warn('⚠️ 可能是表不存在或 RLS 政策問題，使用默認角色 operator');
+          return 'operator';
         }
         
         // 其他錯誤，使用默認角色
-        console.warn('⚠️ 獲取用戶角色失敗，使用默認角色:', error.message);
-        return 'operator'; // 默認角色
+        console.warn('⚠️ 獲取用戶角色失敗，使用默認角色 operator');
+        return 'operator';
       }
 
-      if (!data) {
-        // 如果沒有資料，可能是第一個用戶
-        console.warn('⚠️ user_profiles 中沒有該用戶記錄，檢查是否為第一個用戶');
-        try {
-          const countResult = await Promise.race([
-            supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-            new Promise<{ count: number }>((resolve) => {
-              setTimeout(() => resolve({ count: 1 }), 2000); // 2 秒超時
-            }),
-          ]) as any;
-
-          if (countResult?.count === 0 || !countResult?.count) {
-            console.log('✅ 這是第一個用戶，設為管理員');
-            return 'admin'; // 第一個用戶為管理員
-          }
-        } catch (checkError) {
-          console.warn('檢查用戶數量失敗，使用默認角色 operator');
-        }
-        return 'operator'; // 默認角色
+      if (result.data?.role) {
+        const role = result.data.role as UserRole;
+        console.log('✅ 獲取用戶角色成功:', role);
+        return role;
       }
 
-      const role = (data.role as UserRole) || 'operator';
-      console.log('✅ 獲取用戶角色成功:', role);
-      return role;
+      // 如果沒有資料，使用默認角色（不再嘗試查詢用戶數量，避免再次卡住）
+      console.warn('⚠️ user_profiles 中沒有該用戶記錄，使用默認角色 operator');
+      return 'operator';
+      
     } catch (error: any) {
-      console.error('❌ 獲取用戶角色異常:', error);
-      // 發生異常時（包括超時），使用安全的默認角色
+      console.error('❌ 獲取用戶角色異常:', error.message || error);
+      // 發生異常時（包括超時），立即返回默認角色
       if (error.message?.includes('超時')) {
-        console.warn('⚠️ 獲取角色超時，使用默認角色 operator');
+        console.warn('⚠️ 獲取角色超時（5 秒），使用默認角色 operator');
       }
       return 'operator'; // 安全默認角色
     }
@@ -134,8 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 設定超時保護（15 秒）
-    const TIMEOUT_MS = 15000;
+    // 設定超時保護（10 秒，縮短總超時時間）
+    const TIMEOUT_MS = 10000;
     let timeoutId: NodeJS.Timeout | null = null;
     let isCompleted = false;
 
@@ -151,14 +121,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      // 創建超時 Promise
+      console.log('🔄 開始更新用戶狀態，Email:', supabaseUser.email);
+      
+      // 創建超時 Promise（總超時 10 秒）
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
-          reject(new Error('更新用戶狀態超時（15 秒），使用默認角色'));
+          reject(new Error('更新用戶狀態超時（10 秒），使用默認角色'));
         }, TIMEOUT_MS);
       });
 
-      // 獲取用戶角色（帶超時保護）
+      // 獲取用戶角色（帶超時保護，getUserRole 內部已有 5 秒超時）
       const rolePromise = getUserRole(supabaseUser);
       const role = await Promise.race([
         rolePromise,
@@ -175,14 +147,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         createdAt: supabaseUser.created_at,
       });
       setSession(currentSession);
-      console.log('✅ 用戶狀態更新成功，角色:', role);
+      console.log('✅ 用戶狀態更新成功，Email:', supabaseUser.email, '角色:', role);
     } catch (error: any) {
       // 清除超時
       cleanup();
       
-      console.error('❌ 更新用戶狀態失敗:', error);
+      console.error('❌ 更新用戶狀態失敗:', error.message || error);
       
       // 即使失敗，也設定用戶（使用默認角色），這樣用戶才能繼續使用系統
+      console.warn('⚠️ 使用默認角色 operator，讓用戶可以繼續使用系統');
       setUser({
         id: supabaseUser.id,
         email: supabaseUser.email || '',
@@ -192,10 +165,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(currentSession);
       
       if (error.message?.includes('超時')) {
-        console.warn('⚠️ 獲取角色超時，使用默認角色 operator');
+        console.warn('⚠️ 更新用戶狀態超時，已使用默認角色 operator');
       }
     } finally {
       // 確保 loading 狀態被重置（即使發生異常）
+      console.log('✅ 重置 loading 狀態');
       setLoading(false);
     }
   };
