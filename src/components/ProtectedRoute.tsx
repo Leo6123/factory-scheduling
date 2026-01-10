@@ -17,74 +17,26 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     }
   }, [user, loading, router]);
 
-  // 檢測是否有其他分頁在使用同一 session
+  // 檢查 sessionStorage 中是否有標記需要顯示確認對話框
   useEffect(() => {
     if (loading || !user || hasCheckedMultipleTabs || typeof window === 'undefined') {
       return;
     }
 
-    // 使用 BroadcastChannel 檢測其他分頁
-    const channel = new BroadcastChannel('tab_detection');
-    const tabId = `tab_${Date.now()}_${Math.random()}`;
-    let hasOtherTab = false;
-    let timeoutId: NodeJS.Timeout;
-
-    // 監聽其他分頁的消息
-    const messageHandler = (event: MessageEvent) => {
-      if (event.data.type === 'TAB_ALIVE' && event.data.email === user.email && event.data.tabId !== tabId) {
-        // 收到其他分頁的「我還活著」消息
-        if (!hasOtherTab) {
-          hasOtherTab = true;
-          console.log('⚠️ 檢測到其他分頁正在使用此帳號');
-          setShowConfirmDialog(true);
-          setHasCheckedMultipleTabs(true);
-          clearTimeout(timeoutId);
-          channel.removeEventListener('message', messageHandler);
-          channel.close();
-        }
-      } else if (event.data.type === 'TAB_DETECTION_REQUEST' && event.data.email === user.email) {
-        // 回應其他分頁的檢測請求
-        channel.postMessage({ type: 'TAB_ALIVE', tabId, email: user.email });
-        // 同時也檢查是否有其他分頁
-        if (!hasOtherTab) {
-          hasOtherTab = true;
-          console.log('⚠️ 檢測到其他分頁正在使用此帳號（回應請求時）');
-          setShowConfirmDialog(true);
-          setHasCheckedMultipleTabs(true);
-          clearTimeout(timeoutId);
-        }
-      }
-    };
-
-    channel.addEventListener('message', messageHandler);
-
-    // 請求其他分頁回應
-    channel.postMessage({ type: 'TAB_DETECTION_REQUEST', email: user.email });
-
-    // 等待 1 秒看是否有回應
-    timeoutId = setTimeout(() => {
-      if (!hasOtherTab) {
-        // 沒有其他分頁回應，這是唯一的分頁
-        console.log('✅ 這是唯一的分頁，無需顯示確認對話框');
-        setHasCheckedMultipleTabs(true);
-      }
-      channel.removeEventListener('message', messageHandler);
-      channel.close();
-    }, 1000);
-
-    // 定期發送「我還活著」消息（每 3 秒），讓其他分頁知道這個分頁存在
-    const keepAliveInterval = setInterval(() => {
-      if (!hasOtherTab) {
-        channel.postMessage({ type: 'TAB_ALIVE', tabId, email: user.email });
-      }
-    }, 3000);
-
-    return () => {
-      clearTimeout(timeoutId);
-      clearInterval(keepAliveInterval);
-      channel.removeEventListener('message', messageHandler);
-      channel.close();
-    };
+    // 檢查 AuthContext 是否已經檢測到其他分頁（通過 sessionStorage）
+    const shouldShowDialog = sessionStorage.getItem('show_multitab_dialog') === 'true';
+    const dialogEmail = sessionStorage.getItem('multitab_email');
+    
+    if (shouldShowDialog && dialogEmail === user.email) {
+      console.log('⚠️ [ProtectedRoute] 顯示多分頁確認對話框');
+      setShowConfirmDialog(true);
+      setHasCheckedMultipleTabs(true);
+      // 清除標記，避免重複顯示
+      sessionStorage.removeItem('show_multitab_dialog');
+      sessionStorage.removeItem('multitab_email');
+    } else {
+      setHasCheckedMultipleTabs(true);
+    }
   }, [user, loading, hasCheckedMultipleTabs]);
 
   const handleConfirmLogout = async () => {
@@ -95,9 +47,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
       channel.postMessage({ type: 'FORCE_LOGOUT', email: user?.email });
       channel.close();
     }
-    // 登出當前分頁
-    await signOut();
-    router.push('/login');
+    // 不登出當前分頁，繼續使用（這是用戶選擇「確認（關閉其他分頁）」的意思）
+    console.log('✅ 用戶選擇關閉其他分頁，當前分頁繼續使用');
   };
 
   const handleCancelLogout = async () => {

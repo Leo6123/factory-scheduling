@@ -250,6 +250,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (session?.user) {
           console.log('✅ 找到現有會話，用戶:', session.user.email);
+          
+          // 立即檢測是否有其他分頁（在設定用戶狀態之前）
+          if (typeof window !== 'undefined') {
+            const checkChannel = new BroadcastChannel('tab_detection');
+            const tabId = `tab_${Date.now()}_${Math.random()}`;
+            let hasOtherTab = false;
+            
+            // 監聽其他分頁的回應
+            const checkHandler = (event: MessageEvent) => {
+              if (event.data.type === 'TAB_ALIVE' && event.data.email === session.user.email && event.data.tabId !== tabId) {
+                hasOtherTab = true;
+                console.log('⚠️ [AuthContext] 檢測到其他分頁正在使用此帳號');
+                // 標記需要顯示確認對話框
+                if (typeof window !== 'undefined' && session.user.email) {
+                  sessionStorage.setItem('show_multitab_dialog', 'true');
+                  sessionStorage.setItem('multitab_email', session.user.email);
+                }
+                checkChannel.removeEventListener('message', checkHandler);
+                checkChannel.close();
+              } else if (event.data.type === 'TAB_DETECTION_REQUEST' && event.data.email === session.user.email) {
+                // 回應其他分頁的檢測請求（說明這個分頁也存在）
+                checkChannel.postMessage({ type: 'TAB_ALIVE', tabId, email: session.user.email });
+                if (!hasOtherTab) {
+                  hasOtherTab = true;
+                  console.log('⚠️ [AuthContext] 檢測到其他分頁正在使用此帳號（回應請求時）');
+                  if (typeof window !== 'undefined' && session.user.email) {
+                    sessionStorage.setItem('show_multitab_dialog', 'true');
+                    sessionStorage.setItem('multitab_email', session.user.email);
+                  }
+                }
+              }
+            };
+            
+            checkChannel.addEventListener('message', checkHandler);
+            
+            // 請求其他分頁回應
+            checkChannel.postMessage({ type: 'TAB_DETECTION_REQUEST', email: session.user.email });
+            
+            // 等待 500ms 看是否有回應
+            setTimeout(() => {
+              if (!hasOtherTab) {
+                console.log('✅ [AuthContext] 這是唯一的分頁');
+              }
+              checkChannel.removeEventListener('message', checkHandler);
+              checkChannel.close();
+            }, 500);
+            
+            // 定期發送「我還活著」消息
+            const keepAliveInterval = setInterval(() => {
+              if (!hasOtherTab) {
+                checkChannel.postMessage({ type: 'TAB_ALIVE', tabId, email: session.user.email });
+              } else {
+                clearInterval(keepAliveInterval);
+              }
+            }, 2000);
+            
+            // 清理（在組件卸載時）
+            setTimeout(() => {
+              clearInterval(keepAliveInterval);
+            }, 10000);
+          }
+          
           // 立即設定 session 和基本用戶信息（不等待角色查詢完成）
           // 這樣可以讓用戶立即進入系統，角色查詢在後台完成
           setSession(session);
