@@ -9,10 +9,11 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signIn: (email: string, password: string, forceLogout?: boolean) => Promise<{ error: any; hasExistingSession?: boolean; isOtherDevice?: boolean }>;
   signOut: () => Promise<void>;
   permissions: Permissions;
   hasPermission: (permission: keyof Permissions) => boolean;
+  checkExistingSession: (email: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -264,6 +265,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       });
 
+    // 監聽 BroadcastChannel 消息（跨分頁通信）
+    let broadcastChannel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined') {
+      broadcastChannel = new BroadcastChannel('auth_logout');
+      broadcastChannel.onmessage = (event) => {
+        if (event.data?.type === 'FORCE_LOGOUT') {
+          const targetEmail = event.data.email;
+          if (user?.email === targetEmail) {
+            console.log('🔄 收到強制登出消息，登出當前分頁');
+            // 強制登出當前分頁
+            if (supabase) {
+              supabase.auth.signOut().then(() => {
+                setUser(null);
+                setSession(null);
+                setLoading(false);
+                if (window.location.pathname !== '/login') {
+                  window.location.href = '/login';
+                }
+              });
+            }
+          }
+        }
+      };
+    }
+
     // 監聽認證狀態變化（跨分頁同步）
     const {
       data: { subscription },
@@ -349,16 +375,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         timeoutId = null;
       }
       subscription.unsubscribe();
+      if (broadcastChannel) {
+        broadcastChannel.close();
+      }
     };
   }, []);
 
+  // 檢查是否有現有 session（檢查當前瀏覽器是否有該用戶的 session）
+  const checkExistingSession = async (email: string): Promise<boolean> => {
+    if (!supabase) {
+      return false;
+    }
+
+    try {
+      // 檢查當前瀏覽器是否有該用戶的 session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email === email) {
+        console.log('✅ 檢測到當前瀏覽器有該用戶的 session，用戶:', email);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.warn('⚠️ 檢查現有 session 失敗:', error);
+      return false; // 如果檢查失敗，允許登入（降級處理）
+    }
+  };
+
   // 登入（單裝置登入限制）
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, forceLogout: boolean = false) => {
     if (!supabase) {
       return { error: { message: 'Supabase 未初始化' } };
     }
 
     try {
+      // 在登入前檢查是否有現有 session（除非用戶已經確認要強制登出）
+      if (!forceLogout) {
+        const hasExisting = await checkExistingSession(email);
+        if (hasExisting) {
+          return { error: null, hasExistingSession: true };
+        }
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -369,6 +427,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user && data.session) {
+        // 如果 forceLogout 為 true，先登出所有其他 session
+        if (forceLogout) {
+          try {
+            // 1. 通知其他分頁登出（使用 BroadcastChannel）
+            if (typeof window !== 'undefined') {
+              const channel = new BroadcastChannel('auth_logout');
+              channel.postMessage({ type: 'FORCE_LOGOUT', email });
+              channel.close();
+            }
+            
+            // 2. 刪除 device_sessions 表中的舊 session（如果存在）
+            try {
+              const { error: deleteError } = await supabase
+                .from('device_sessions')
+                .delete()
+                .neq('session_token', data.session.access_token);
+              
+              if (deleteError) {
+                console.warn('⚠️ 刪除舊 device session 失敗:', deleteError);
+              } else {
+                console.log('✅ 已刪除舊 device session');
+              }
+            } catch (err) {
+              console.warn('⚠️ 刪除舊 device session 異常:', err);
+            }
+          } catch (err) {
+            console.warn('⚠️ 通知其他分頁登出失敗:', err);
+          }
+        } else {
+          // 如果沒有強制登出，檢查是否有其他設備的 session
+          try {
+            const { data: deviceSessions, error: deviceError } = await supabase
+              .from('device_sessions')
+              .select('*')
+              .neq('session_token', data.session.access_token);
+            
+            if (!deviceError && deviceSessions && deviceSessions.length > 0) {
+              // 有其他設備的 session，返回標記讓前端處理
+              console.log('⚠️ 檢測到其他設備的 session，數量:', deviceSessions.length);
+              // 先設定用戶狀態，然後讓前端決定是否要登出其他設備
+              setSession(data.session);
+              setUser({
+                id: data.user.id,
+                email: data.user.email || '',
+                role: 'operator',
+                createdAt: data.user.created_at,
+              });
+              setLoading(false);
+              
+              // 在後台獲取角色
+              getUserRole(data.user)
+                .then((role) => {
+                  setUser(prev => prev ? { ...prev, role } : null);
+                })
+                .catch((err) => {
+                  console.warn('⚠️ 後台獲取角色失敗:', err);
+                });
+              
+              return { error: null, hasExistingSession: true, isOtherDevice: true };
+            }
+          } catch (err) {
+            // device_sessions 表可能不存在，忽略錯誤
+            console.log('ℹ️ 無法檢查其他設備的 session');
+          }
+        }
         // 註冊新 session（這會自動刪除舊 session）
         // 使用 Promise.race 避免阻塞（最多等待 5 秒）
         try {
@@ -431,7 +554,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
       }
 
-      return { error: null };
+      return { error: null, hasExistingSession: false };
     } catch (error: any) {
       return { error };
     }
@@ -492,6 +615,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
     permissions,
     hasPermission,
+    checkExistingSession,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

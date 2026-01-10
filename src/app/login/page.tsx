@@ -3,13 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { signIn, user, loading: authLoading } = useAuth();
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingLogin, setPendingLogin] = useState<{ email: string; password: string } | null>(null);
+  const { signIn, user, loading: authLoading, checkExistingSession } = useAuth();
   const router = useRouter();
 
   // 如果已登入，重定向到首頁
@@ -25,13 +28,34 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { error } = await signIn(email, password);
-      if (error) {
+      // 先檢查當前瀏覽器是否有該用戶的 session（同一瀏覽器的新分頁）
+      const hasExisting = await checkExistingSession(email);
+      
+      if (hasExisting) {
+        // 同一瀏覽器的新分頁，顯示確認對話框
+        setPendingLogin({ email, password });
+        setShowConfirmDialog(true);
+        setLoading(false);
+        return;
+      }
+
+      // 嘗試登入
+      const result = await signIn(email, password);
+      
+      // 如果有其他設備的 session，顯示確認對話框
+      if (result.hasExistingSession && result.isOtherDevice) {
+        setPendingLogin({ email, password });
+        setShowConfirmDialog(true);
+        setLoading(false);
+        return;
+      }
+
+      if (result.error) {
         // 提供更詳細的錯誤訊息
-        let errorMessage = error.message || '登入失敗，請檢查帳號密碼';
+        let errorMessage = result.error.message || '登入失敗，請檢查帳號密碼';
         
-        if (error.message?.includes('Invalid login credentials') || 
-            error.message?.includes('invalid_credentials')) {
+        if (result.error.message?.includes('Invalid login credentials') || 
+            result.error.message?.includes('invalid_credentials')) {
           errorMessage = '登入失敗：帳號或密碼錯誤\n\n' +
             '可能原因：\n' +
             '1. 用戶尚未在 Supabase 中建立帳號\n' +
@@ -40,7 +64,7 @@ export default function LoginPage() {
         }
         
         setError(errorMessage);
-        console.error('登入錯誤:', error);
+        console.error('登入錯誤:', result.error);
       } else {
         router.push('/');
       }
@@ -50,6 +74,37 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleConfirmLogout = async () => {
+    if (!pendingLogin) return;
+    
+    setShowConfirmDialog(false);
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 強制登出舊 session 並登入
+      const result = await signIn(pendingLogin.email, pendingLogin.password, true);
+      
+      if (result.error) {
+        setError(result.error.message || '登入失敗，請檢查帳號密碼');
+        console.error('登入錯誤:', result.error);
+      } else {
+        router.push('/');
+      }
+    } catch (err: any) {
+      setError(err.message || '登入失敗，請稍後再試');
+      console.error('登入異常:', err);
+    } finally {
+      setLoading(false);
+      setPendingLogin(null);
+    }
+  };
+
+  const handleCancelLogout = () => {
+    setShowConfirmDialog(false);
+    setPendingLogin(null);
   };
 
   if (authLoading) {
@@ -65,8 +120,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black px-4">
-      <div className="w-full max-w-md">
+    <>
+      {/* 確認對話框 */}
+      <ConfirmDialog
+        isOpen={showConfirmDialog}
+        title="檢測到現有登入"
+        message={`此帳號（${pendingLogin?.email}）已在其他分頁或裝置登入。\n\n是否要關閉原分頁/裝置並在此處重新登入？\n\n選擇「確認」將登出原分頁/裝置，選擇「取消」將取消登入。`}
+        confirmText="確認"
+        cancelText="取消"
+        onConfirm={handleConfirmLogout}
+        onCancel={handleCancelLogout}
+        type="warning"
+      />
+
+      <div className="min-h-screen flex items-center justify-center bg-black px-4">
+        <div className="w-full max-w-md">
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8 shadow-xl">
           {/* 標題 */}
           <div className="text-center mb-8">
@@ -149,6 +217,7 @@ export default function LoginPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
