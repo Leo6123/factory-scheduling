@@ -6,6 +6,7 @@ interface ClearButtonProps {
 }
 
 export default function ClearButton({ onClear, itemCount }: ClearButtonProps) {
+  // 功能暫時關閉：清除全部功能已禁用，但代碼保留以便日後重新啟用
   const handleClick = () => {
     if (itemCount === 0) return;
     
@@ -18,15 +19,19 @@ export default function ClearButton({ onClear, itemCount }: ClearButtonProps) {
     }
   };
 
+  // 功能暫時關閉：按鈕永遠設為 disabled
+  const isDisabled = true; // 原本為: itemCount === 0
+
   return (
     <button
       onClick={handleClick}
-      disabled={itemCount === 0}
-      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs whitespace-nowrap
-                 transition-all duration-200
-                 ${itemCount === 0
-                   ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+      disabled={isDisabled}
+      className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs whitespace-nowrap
+                 transition-all duration-200 h-8
+                 ${isDisabled
+                   ? "bg-gray-700 text-gray-500 cursor-not-allowed opacity-50"
                    : "bg-red-600 hover:bg-red-500 active:scale-95"}`}
+      title={isDisabled ? "清除全部功能已暫時關閉" : ""}
     >
       {/* 垃圾桶圖示 */}
       <svg 

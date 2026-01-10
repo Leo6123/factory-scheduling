@@ -95,92 +95,114 @@ export default function UnscheduledSidebar({
           </span>
         </div>
         
-        {/* 操作按鈕 - 一行橫向排列 */}
-        <div className="flex flex-wrap gap-1.5">
-          <ImportExcelButton 
-            onImport={onImport} 
-            existingBatchIds={existingBatchIds}
-          />
+        {/* 操作按鈕 - 兩列佈局，統一大小 */}
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="w-full">
+            <ImportExcelButton 
+              onImport={onImport} 
+              existingBatchIds={existingBatchIds}
+            />
+          </div>
           
           {/* 混合缸新增表單 */}
           {onAddItem && (
-            <MixTankForm 
-              onAdd={onAddItem} 
-              existingBatchIds={existingBatchIds}
-              allScheduleItems={allScheduleItems}
-            />
+            <div className="w-full">
+              <MixTankForm 
+                onAdd={onAddItem} 
+                existingBatchIds={existingBatchIds}
+                allScheduleItems={allScheduleItems}
+              />
+            </div>
           )}
           
           {/* 新增卡片表單 */}
           {onAddItem && (
-            <AddCardForm 
-              onAdd={onAddItem}
-            />
+            <div className="w-full">
+              <AddCardForm 
+                onAdd={onAddItem}
+              />
+            </div>
           )}
           
           {/* NG修色新增表單 */}
           {onAddItem && (
-            <AddNGColorForm 
-              onAdd={onAddItem} 
-              existingBatchIds={existingBatchIds}
-            />
+            <div className="w-full">
+              <AddNGColorForm 
+                onAdd={onAddItem} 
+                existingBatchIds={existingBatchIds}
+              />
+            </div>
           )}
           
           {/* 清機流程 */}
           {onAddItem && (
-            <CleaningProcessForm onAdd={onAddItem} />
+            <div className="w-full">
+              <CleaningProcessForm onAdd={onAddItem} />
+            </div>
           )}
           
           {/* 故障維修 */}
           {onAddItem && (
-            <MaintenanceForm onAdd={onAddItem} />
+            <div className="w-full">
+              <MaintenanceForm onAdd={onAddItem} />
+            </div>
           )}
           
           {/* 回到上一步 */}
           {onUndo && (
-            <button
-              onClick={onUndo}
-              disabled={!canUndo}
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs
-                         transition-all duration-200 whitespace-nowrap
-                         ${canUndo
-                           ? "bg-purple-600 hover:bg-purple-500 active:scale-95"
-                           : "bg-gray-700 text-gray-500 cursor-not-allowed"}`}
-            >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                      d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-              </svg>
-              回到上一步
-            </button>
+            <div className="w-full">
+              <button
+                onClick={onUndo}
+                disabled={!canUndo}
+                className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs
+                           transition-all duration-200 whitespace-nowrap h-8
+                           ${canUndo
+                             ? "bg-purple-600 hover:bg-purple-500 active:scale-95"
+                             : "bg-gray-700 text-gray-500 cursor-not-allowed"}`}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                回到上一步
+              </button>
+            </div>
           )}
           
-          <ClearButton onClear={onClear} itemCount={totalItemCount} />
+          <div className="w-full">
+            <ClearButton onClear={onClear} itemCount={totalItemCount} />
+          </div>
           
           {/* 匯出排程 */}
-          <ExportExcelButton
-            scheduleItems={allScheduleItems}
-            lineConfigs={lineConfigs}
-            selectedYear={selectedYear}
-            selectedMonth={selectedMonth}
-          />
+          <div className="w-full">
+            <ExportExcelButton
+              scheduleItems={allScheduleItems}
+              lineConfigs={lineConfigs}
+              selectedYear={selectedYear}
+              selectedMonth={selectedMonth}
+            />
+          </div>
           
           {/* 存檔功能 */}
-          <SaveSnapshotButton
-            scheduleItems={allScheduleItems}
-            lineConfigs={lineConfigs}
-            onLoadSnapshot={onLoadSnapshot}
-          />
+          <div className="w-full">
+            <SaveSnapshotButton
+              scheduleItems={allScheduleItems}
+              lineConfigs={lineConfigs}
+              onLoadSnapshot={onLoadSnapshot}
+            />
+          </div>
           
           {/* 匯入建議排程 */}
           {onImportSuggestedSchedule && (
-            <ImportSuggestedScheduleButton onImport={onImportSuggestedSchedule} />
+            <div className="w-full">
+              <ImportSuggestedScheduleButton onImport={onImportSuggestedSchedule} />
+            </div>
           )}
           
           {/* 垃圾桶 - 拖曳時顯示 */}
           <div
             ref={setTrashRef}
-            className={`flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed
+            className={`col-span-2 flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed
                         transition-all duration-200
                         ${isDragging ? "opacity-100" : "opacity-0 h-0 py-0 overflow-hidden"}
                         ${isOverTrash 

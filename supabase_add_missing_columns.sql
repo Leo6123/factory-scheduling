@@ -44,15 +44,33 @@ BEGIN
   END IF;
 END $$;
 
--- 4. 驗證欄位已添加
+-- 4. 添加 remark 欄位（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'schedule_items'
+    AND column_name = 'remark'
+  ) THEN
+    ALTER TABLE public.schedule_items
+    ADD COLUMN remark TEXT;
+    
+    RAISE NOTICE '✅ 已添加 remark 欄位';
+  ELSE
+    RAISE NOTICE 'ℹ️ remark 欄位已存在';
+  END IF;
+END $$;
+
+-- 5. 驗證欄位已添加
 SELECT column_name, data_type, is_nullable
 FROM information_schema.columns
 WHERE table_schema = 'public'
 AND table_name = 'schedule_items'
-AND column_name IN ('material_ready_date', 'recipe_items')
+AND column_name IN ('material_ready_date', 'recipe_items', 'remark')
 ORDER BY column_name;
 
--- 5. 修改 start_hour 欄位類型（如果存在且是整數，改為支援小數）
+-- 6. 修改 start_hour 欄位類型（如果存在且是整數，改為支援小數）
 DO $$
 BEGIN
   IF EXISTS (
@@ -78,7 +96,7 @@ BEGIN
   END IF;
 END $$;
 
--- 6. 修改 maintenance_hours 欄位類型（如果存在且是整數，改為支援小數）
+-- 7. 修改 maintenance_hours 欄位類型（如果存在且是整數，改為支援小數）
 DO $$
 BEGIN
   IF EXISTS (
@@ -104,7 +122,7 @@ BEGIN
   END IF;
 END $$;
 
--- 7. 檢查 RLS 政策（確保有寫入權限）
+-- 8. 檢查 RLS 政策（確保有寫入權限）
 SELECT policyname, cmd, roles
 FROM pg_policies
 WHERE tablename = 'schedule_items';

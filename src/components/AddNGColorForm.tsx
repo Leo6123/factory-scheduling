@@ -62,10 +62,9 @@ export default function AddNGColorForm({ onAdd, existingBatchIds }: AddNGColorFo
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="px-2 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap
+        className="w-full h-8 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap
                    bg-orange-500/20 text-orange-400 border border-orange-500/30
-                   hover:bg-orange-500/30 transition-colors
-                   flex items-center gap-1"
+                   hover:bg-orange-500/30 transition-colors"
       >
         <span>🎨</span>
         <span>NG修色</span>

@@ -13,6 +13,9 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 文件大小限制：5MB (5 * 1024 * 1024 bytes)
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
   const handleClick = () => {
     fileInputRef.current?.click();
   };
@@ -23,6 +26,18 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
 
     setIsLoading(true);
     setError(null);
+
+    // 檢查文件大小
+    if (file.size > MAX_FILE_SIZE) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      const maxSizeMB = (MAX_FILE_SIZE / (1024 * 1024)).toFixed(0);
+      setError(`檔案過大 (${fileSizeMB} MB)，最大允許 ${maxSizeMB} MB`);
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
 
     try {
       const result: SuggestedScheduleImportResult = await parseSuggestedScheduleExcel(file);
@@ -57,7 +72,7 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
   };
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <input
         ref={fileInputRef}
         type="file"
@@ -69,12 +84,12 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
       <button
         onClick={handleClick}
         disabled={isLoading}
-        className={`flex items-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs whitespace-nowrap
+        className={`w-full h-8 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs whitespace-nowrap
                    transition-all duration-200
                    ${isLoading 
                      ? "bg-gray-600 cursor-not-allowed" 
                      : "bg-blue-600 hover:bg-blue-500 active:scale-95"}`}
-        title="匯入建議排程 Excel 檔案（一個月更新一次）"
+        title="匯入建議排程 Excel 檔案（最大 5MB，一個月更新一次）"
       >
         {/* 上傳圖示 */}
         <svg 
@@ -106,7 +121,8 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
       {/* 錯誤訊息 */}
       {error && (
         <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-red-500/20 
-                       border border-red-500/50 rounded text-red-400 text-xs whitespace-nowrap z-50">
+                       border border-red-500/50 rounded text-red-400 text-xs z-50
+                       max-w-[200px] break-words">
           {error}
         </div>
       )}

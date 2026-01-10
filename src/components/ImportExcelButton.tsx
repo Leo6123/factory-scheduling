@@ -14,6 +14,9 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 文件大小限制：5MB (5 * 1024 * 1024 bytes)
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
   const handleClick = () => {
     fileInputRef.current?.click();
   };
@@ -24,6 +27,18 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
 
     setIsLoading(true);
     setError(null);
+
+    // 檢查文件大小
+    if (file.size > MAX_FILE_SIZE) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      const maxSizeMB = (MAX_FILE_SIZE / (1024 * 1024)).toFixed(0);
+      setError(`檔案過大 (${fileSizeMB} MB)，最大允許 ${maxSizeMB} MB`);
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
 
     try {
       const result: ImportResult = await parseExcelFile(file, existingBatchIds);
@@ -60,7 +75,7 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
   };
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <input
         ref={fileInputRef}
         type="file"
@@ -72,11 +87,12 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
       <button
         onClick={handleClick}
         disabled={isLoading}
-        className={`flex items-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs whitespace-nowrap
-                   transition-all duration-200
+        className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg font-medium text-xs whitespace-nowrap
+                   transition-all duration-200 h-8
                    ${isLoading 
                      ? "bg-gray-600 cursor-not-allowed" 
                      : "bg-emerald-600 hover:bg-emerald-500 active:scale-95"}`}
+        title="匯入訂單 Excel 檔案（最大 5MB）"
       >
         {/* 上傳圖示 */}
         <svg 
@@ -108,7 +124,8 @@ export default function ImportExcelButton({ onImport, existingBatchIds }: Import
       {/* 錯誤訊息 */}
       {error && (
         <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-red-500/20 
-                       border border-red-500/50 rounded text-red-400 text-xs whitespace-nowrap z-50">
+                       border border-red-500/50 rounded text-red-400 text-xs z-50
+                       max-w-[200px] break-words">
           {error}
         </div>
       )}
