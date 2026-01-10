@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase, TABLES } from '@/lib/supabase';
 import { User, UserRole, getPermissions, Permissions } from '@/types/auth';
@@ -22,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 從 Supabase 用戶獲取角色（從資料庫 user_profiles 表或使用默認角色）
   // 強制從資料庫獲取，不使用緩存
@@ -193,16 +194,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true;
-    let timeoutId: NodeJS.Timeout | null = null;
+
+    // 清除之前的超時（如果存在）
+    if (initTimeoutRef.current) {
+      clearTimeout(initTimeoutRef.current);
+      initTimeoutRef.current = null;
+    }
 
     // 設定總超時保護（30 秒，給足夠時間完成查詢）
-    timeoutId = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('⚠️ 身份驗證初始化超時（30 秒），設定為未登入狀態');
-        setLoading(false);
-        setUser(null);
-        setSession(null);
+    // 注意：在超時檢查中，也要檢查是否有 session，如果有就不要清除（避免覆蓋登入狀態）
+    initTimeoutRef.current = setTimeout(() => {
+      if (mounted && loading && supabase) {
+        // 再次檢查是否有 session，避免在登入成功後被超時覆蓋
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (mounted) {
+            if (session?.user) {
+              console.log('✅ 超時檢查：發現 session，保持登入狀態，用戶:', session.user.email);
+              // 有 session，保持登入狀態，只停止 loading
+              setLoading(false);
+            } else {
+              console.warn('⚠️ 身份驗證初始化超時（30 秒），且沒有 session，設定為未登入狀態');
+              setLoading(false);
+              setUser(null);
+              setSession(null);
+            }
+          }
+        }).catch((err) => {
+          console.warn('⚠️ 超時檢查時獲取 session 失敗:', err);
+          if (mounted) {
+            setLoading(false);
+            setUser(null);
+            setSession(null);
+          }
+        });
       }
+      initTimeoutRef.current = null;
     }, 30000);
 
     // 獲取當前會話
@@ -211,9 +237,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         
         // 清除超時
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
+        if (initTimeoutRef.current) {
+          clearTimeout(initTimeoutRef.current);
+          initTimeoutRef.current = null;
         }
         
         if (error) {
@@ -256,9 +282,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         
         // 清除超時
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
+        if (initTimeoutRef.current) {
+          clearTimeout(initTimeoutRef.current);
+          initTimeoutRef.current = null;
         }
         
         console.error('❌ 獲取會話異常:', error);
@@ -297,6 +323,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       
       console.log('🔄 認證狀態變化:', event, session?.user?.email || '已登出');
+      
+      // 如果登入成功，清除初始化超時（避免超時覆蓋登入狀態）
+      if (event === 'SIGNED_IN' && session?.user) {
+        console.log('✅ 登入成功，清除初始化超時');
+        if (initTimeoutRef.current) {
+          clearTimeout(initTimeoutRef.current);
+          initTimeoutRef.current = null;
+        }
+      }
       
       if (session?.user) {
         // 檢查 session 是否有效（單裝置登入檢查）
@@ -370,9 +405,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
+      if (initTimeoutRef.current) {
+        clearTimeout(initTimeoutRef.current);
+        initTimeoutRef.current = null;
       }
       subscription.unsubscribe();
       if (broadcastChannel) {
