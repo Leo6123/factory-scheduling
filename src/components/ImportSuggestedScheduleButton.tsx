@@ -91,19 +91,18 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
         return;
       }
 
-      // 匯入資料（帶超時保護）
+      // 匯入資料（不設總超時，因為批次處理本身有超時保護，且可能需要更長時間）
       console.log('💾 開始匯入', result.schedules.length, '筆資料到資料庫...');
-      const importPromise = onImport(result.schedules);
-      const success = await Promise.race([
-        importPromise,
-        createTimeout('匯入資料超時（30 秒），請檢查網路連線或 Supabase 狀態'),
-      ]);
-
-      // 清除超時
+      
+      // 清除解析階段的超時（因為要開始匯入階段）
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
+      
+      // 對於大量資料（> 500 筆），不設總超時，讓批次處理完成
+      // 批次處理本身有每個批次的超時保護（15 秒）
+      const success = await onImport(result.schedules);
 
       isCompleted = true;
 
