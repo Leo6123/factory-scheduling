@@ -194,15 +194,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     let timeoutId: NodeJS.Timeout | null = null;
 
-    // 設定總超時保護（15 秒）
+    // 設定總超時保護（30 秒，給足夠時間完成查詢）
     timeoutId = setTimeout(() => {
       if (mounted && loading) {
-        console.warn('⚠️ 身份驗證初始化超時（15 秒），設定為未登入狀態');
+        console.warn('⚠️ 身份驗證初始化超時（30 秒），設定為未登入狀態');
         setLoading(false);
         setUser(null);
         setSession(null);
       }
-    }, 15000);
+    }, 30000);
 
     // 獲取當前會話
     supabase.auth.getSession()
@@ -223,7 +223,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (session?.user) {
           console.log('✅ 找到現有會話，用戶:', session.user.email);
-          updateUser(session.user, session);
+          // 立即設定 session 和基本用戶信息（不等待角色查詢完成）
+          // 這樣可以讓用戶立即進入系統，角色查詢在後台完成
+          setSession(session);
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            role: 'operator', // 臨時使用默認角色
+            createdAt: session.user.created_at,
+          });
+          setLoading(false); // 立即停止 loading，讓用戶可以進入系統
+          
+          // 在後台異步更新角色（不阻塞 UI）
+          getUserRole(session.user)
+            .then((role) => {
+              if (mounted) {
+                console.log('✅ 後台獲取角色成功，更新為:', role);
+                setUser(prev => prev ? { ...prev, role } : null);
+              }
+            })
+            .catch((err) => {
+              console.warn('⚠️ 後台獲取角色失敗，保持默認角色:', err);
+              // 保持默認角色，不影響用戶使用
+            });
         } else {
           console.log('ℹ️ 沒有現有會話');
           setLoading(false);
@@ -348,30 +370,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data.user && data.session) {
         // 註冊新 session（這會自動刪除舊 session）
+        // 使用 Promise.race 避免阻塞（最多等待 5 秒）
         try {
           if (supabase) {
             const deviceInfo = typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown';
             const sessionToken = data.session.access_token;
             
-            const { error: sessionError } = await supabase.rpc('register_device_session', {
+            const registerPromise = supabase.rpc('register_device_session', {
               p_session_token: sessionToken,
               p_device_info: deviceInfo,
-              p_ip_address: null, // 前端無法獲取真實 IP，留空
+              p_ip_address: null,
+            });
+            
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error('註冊 device session 超時')), 5000);
             });
 
-            if (sessionError) {
-              console.warn('⚠️ 註冊 device session 失敗:', sessionError);
-              // 即使註冊失敗，也繼續登入流程（降級處理）
-            } else {
-              console.log('✅ 已註冊新 session，舊 session 已自動登出');
+            try {
+              const result = await Promise.race([registerPromise, timeoutPromise]) as any;
+              if (result?.error) {
+                console.warn('⚠️ 註冊 device session 失敗:', result.error);
+              } else {
+                console.log('✅ 已註冊新 session，舊 session 已自動登出');
+              }
+            } catch (err: any) {
+              // 如果函數不存在或超時，跳過（降級處理）
+              if (err?.message?.includes('does not exist') || 
+                  err?.message?.includes('超時') ||
+                  err?.code === '42883') {
+                console.log('ℹ️ register_device_session 函數不存在或超時，跳過單裝置登入檢查');
+              } else {
+                console.warn('⚠️ 註冊 device session 異常:', err);
+              }
             }
           }
         } catch (err) {
           console.warn('⚠️ 註冊 device session 異常:', err);
-          // 即使異常，也繼續登入流程
         }
 
-        await updateUser(data.user, data.session);
+        // 立即設定 session 和基本用戶信息（不等待角色查詢完成）
+        // 這樣登入可以立即完成，角色查詢在後台進行
+        setSession(data.session);
+        setUser({
+          id: data.user.id,
+          email: data.user.email || '',
+          role: 'operator', // 臨時使用默認角色
+          createdAt: data.user.created_at,
+        });
+        setLoading(false); // 立即停止 loading
+        
+        // 在後台異步更新角色（不阻塞登入流程）
+        getUserRole(data.user)
+          .then((role) => {
+            console.log('✅ 登入後獲取角色成功，更新為:', role);
+            setUser(prev => prev ? { ...prev, role } : null);
+          })
+          .catch((err) => {
+            console.warn('⚠️ 登入後獲取角色失敗，保持默認角色:', err);
+            // 保持默認角色，不影響登入
+          });
       }
 
       return { error: null };
