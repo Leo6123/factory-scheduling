@@ -41,14 +41,6 @@ export default function LoginPage() {
 
       // 嘗試登入
       const result = await signIn(email, password);
-      
-      // 如果有其他設備的 session，顯示確認對話框
-      if (result.hasExistingSession && result.isOtherDevice) {
-        setPendingLogin({ email, password });
-        setShowConfirmDialog(true);
-        setLoading(false);
-        return;
-      }
 
       if (result.error) {
         // 提供更詳細的錯誤訊息

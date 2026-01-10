@@ -23,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitializingRef = useRef<boolean>(false); // 追蹤是否正在初始化
 
   // 從 Supabase 用戶獲取角色（從資料庫 user_profiles 表或使用默認角色）
   // 強制從資料庫獲取，不使用緩存
@@ -194,6 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true;
+    isInitializingRef.current = true; // 標記正在初始化
 
     // 清除之前的超時（如果存在）
     if (initTimeoutRef.current) {
@@ -229,6 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       }
       initTimeoutRef.current = null;
+      isInitializingRef.current = false; // 標記初始化完成
     }, 30000);
 
     // 獲取當前會話
@@ -245,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) {
           console.error('❌ 獲取會話失敗:', error);
           setLoading(false);
+          isInitializingRef.current = false;
           return;
         }
         
@@ -279,6 +283,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('ℹ️ 沒有現有會話');
           setLoading(false);
         }
+        
+        isInitializingRef.current = false; // 標記初始化完成
       })
       .catch((error) => {
         if (!mounted) return;
@@ -291,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         console.error('❌ 獲取會話異常:', error);
         setLoading(false);
+        isInitializingRef.current = false; // 標記初始化完成
       });
 
     // 監聽 BroadcastChannel 消息（跨分頁通信）
@@ -335,6 +342,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           clearTimeout(initTimeoutRef.current);
           initTimeoutRef.current = null;
         }
+        
+        // 如果正在初始化（從 getSession() 中），就不需要再次調用 updateUser
+        // 避免重複更新和可能的狀態混亂（特別是 loading 狀態）
+        if (isInitializingRef.current) {
+          console.log('ℹ️ [onAuthStateChange] 正在初始化中，跳過 updateUser（避免重複更新）');
+          // 只確保 loading 狀態正確，並確保 session 是最新的
+          setLoading(false);
+          setSession(session);
+          if (!user || user.email !== session.user.email) {
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              role: 'operator',
+              createdAt: session.user.created_at,
+            });
+          }
+          return;
+        }
+        
+        // 如果用戶狀態已經存在且 email 匹配，就不需要再次調用 updateUser
+        if (user && user.email === session.user.email && session) {
+          console.log('ℹ️ [onAuthStateChange] 用戶狀態已存在，跳過 updateUser（避免重複更新）');
+          // 只確保 loading 狀態正確，並確保 session 是最新的
+          setLoading(false);
+          setSession(session);
+          return;
+        }
       }
       
       if (session?.user) {
@@ -346,10 +380,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // 單裝置登入檢查（如果已設置 device_sessions 表）
+        // 添加超時保護，避免阻塞
         try {
-          const rpcResult = await supabase.rpc('is_session_valid', {
+          const checkPromise = supabase.rpc('is_session_valid', {
             p_session_token: session.access_token,
           });
+          
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('檢查 session 有效性超時')), 3000);
+          });
+
+          const rpcResult = await Promise.race([checkPromise, timeoutPromise]) as any;
           
           const { data: isValid, error: checkError } = rpcResult;
 
@@ -377,9 +418,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
         } catch (err: any) {
-          // 如果 RPC 函數不存在，會拋出異常，這是正常的（兼容舊版本）
-          if (err?.message?.includes('does not exist') || err?.code === '42883') {
-            console.log('ℹ️ is_session_valid 函數不存在，跳過單裝置登入檢查');
+          // 如果 RPC 函數不存在或超時，跳過檢查（兼容舊版本）
+          if (err?.message?.includes('does not exist') || 
+              err?.message?.includes('超時') ||
+              err?.code === '42883') {
+            console.log('ℹ️ is_session_valid 函數不存在或超時，跳過單裝置登入檢查');
           } else {
             console.warn('⚠️ 檢查 session 有效性異常:', err);
           }
@@ -387,7 +430,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // 強制重新獲取用戶角色（不使用緩存）
-        await updateUser(session.user, session);
+        // 但只有在不在初始化中且用戶狀態不存在時才調用（避免與初始化時的設置重複）
+        if (!isInitializingRef.current && (!user || user.email !== session.user.email)) {
+          console.log('🔄 [onAuthStateChange] 調用 updateUser，更新用戶狀態');
+          // 使用非阻塞方式，避免阻塞 UI
+          updateUser(session.user, session).catch((err) => {
+            console.error('❌ updateUser 失敗:', err);
+            // 即使失敗，也要確保 loading 狀態正確
+            if (mounted) {
+              setLoading(false);
+              // 設定基本用戶信息，避免頁面一直載入
+              if (session?.user) {
+                setSession(session);
+                setUser({
+                  id: session.user.id,
+                  email: session.user.email || '',
+                  role: 'operator',
+                  createdAt: session.user.created_at,
+                });
+              }
+            }
+          });
+        } else {
+          if (isInitializingRef.current) {
+            console.log('ℹ️ [onAuthStateChange] 正在初始化中，跳過 updateUser（避免重複更新）');
+          } else {
+            console.log('ℹ️ [onAuthStateChange] 用戶狀態已存在，跳過 updateUser（避免重複更新）');
+          }
+          // 確保 loading 狀態正確（以防萬一）
+          setLoading(false);
+        }
         
         // 注意：多分頁檢測在 ProtectedRoute 中進行，這裡不需要設置持續監聽器
       } else {
@@ -498,40 +570,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } else {
           // 如果沒有強制登出，檢查是否有其他設備的 session
-          try {
-            const { data: deviceSessions, error: deviceError } = await supabase
-              .from('device_sessions')
-              .select('*')
-              .neq('session_token', data.session.access_token);
-            
-            if (!deviceError && deviceSessions && deviceSessions.length > 0) {
-              // 有其他設備的 session，返回標記讓前端處理
-              console.log('⚠️ 檢測到其他設備的 session，數量:', deviceSessions.length);
-              // 先設定用戶狀態，然後讓前端決定是否要登出其他設備
-              setSession(data.session);
-              setUser({
-                id: data.user.id,
-                email: data.user.email || '',
-                role: 'operator',
-                createdAt: data.user.created_at,
-              });
-              setLoading(false);
-              
-              // 在後台獲取角色
-              getUserRole(data.user)
-                .then((role) => {
-                  setUser(prev => prev ? { ...prev, role } : null);
-                })
-                .catch((err) => {
-                  console.warn('⚠️ 後台獲取角色失敗:', err);
-                });
-              
-              return { error: null, hasExistingSession: true, isOtherDevice: true };
-            }
-          } catch (err) {
-            // device_sessions 表可能不存在，忽略錯誤
-            console.log('ℹ️ 無法檢查其他設備的 session');
-          }
+          // 注意：這個檢查可能會很慢，所以先完成登入流程，然後在後台檢查
+          // 避免阻塞登入
         }
         // 註冊新 session（這會自動刪除舊 session）
         // 使用 Promise.race 避免阻塞（最多等待 5 秒）
@@ -593,6 +633,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn('⚠️ 登入後獲取角色失敗，保持默認角色:', err);
             // 保持默認角色，不影響登入
           });
+        
+        // 在後台檢查是否有其他設備的 session（不阻塞登入流程）
+        if (!forceLogout) {
+          try {
+            const { data: deviceSessions, error: deviceError } = await supabase
+              .from('device_sessions')
+              .select('*')
+              .neq('session_token', data.session.access_token)
+              .limit(1);
+            
+            if (!deviceError && deviceSessions && deviceSessions.length > 0) {
+              console.log('⚠️ 後台檢測到其他設備的 session，但用戶已登入，將在 ProtectedRoute 中處理');
+              // 不返回錯誤，讓用戶正常登入，多分頁檢測會在 ProtectedRoute 中處理
+            }
+          } catch (err) {
+            // device_sessions 表可能不存在，忽略錯誤
+            console.log('ℹ️ 無法檢查其他設備的 session:', err);
+          }
+        }
       }
 
       return { error: null, hasExistingSession: false };
