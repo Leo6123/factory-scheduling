@@ -14,6 +14,7 @@ import CleaningProcessForm from "./CleaningProcessForm";
 import MaintenanceForm from "./MaintenanceForm";
 import MixTankForm from "./MixTankForm";
 import ImportSuggestedScheduleButton from "./ImportSuggestedScheduleButton";
+import RefreshDataButton from "./RefreshDataButton";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface UnscheduledSidebarProps {
@@ -44,6 +45,7 @@ interface UnscheduledSidebarProps {
   onLoadSnapshot?: (items: ScheduleItem[], configs: Record<string, LineConfig>) => void;  // 載入存檔
   getSuggestedSchedule?: (materialNumber: string) => string[] | null;  // 取得建議排程
   onImportSuggestedSchedule?: (schedules: any[]) => Promise<boolean>;  // 匯入建議排程
+  onRefreshData?: () => Promise<void>;  // 重新載入資料（清除緩存）
 }
 
 export default function UnscheduledSidebar({
@@ -74,6 +76,7 @@ export default function UnscheduledSidebar({
   onLoadSnapshot,
   getSuggestedSchedule,
   onImportSuggestedSchedule,
+  onRefreshData,
 }: UnscheduledSidebarProps) {
   const { permissions, hasPermission } = useAuth();
   const { isOver, setNodeRef } = useDroppable({
@@ -208,6 +211,13 @@ export default function UnscheduledSidebar({
           {onImportSuggestedSchedule && hasPermission('canImport') && (
             <div className="w-full">
               <ImportSuggestedScheduleButton onImport={onImportSuggestedSchedule} />
+            </div>
+          )}
+          
+          {/* 重新載入資料 - 所有用戶都可以使用 */}
+          {onRefreshData && (
+            <div className="w-full">
+              <RefreshDataButton onRefresh={onRefreshData} />
             </div>
           )}
           

@@ -30,33 +30,45 @@ function saveToLocalStorage(items: ScheduleItem[]): void {
   }
 }
 
-// 從資料庫載入排程項目
+// 從資料庫載入排程項目（優先從資料庫載入，不使用 localStorage）
 async function loadScheduleItemsFromDB(): Promise<ScheduleItem[]> {
   if (!supabase) {
-    return loadFromLocalStorage();
+    console.warn('⚠️ Supabase 未初始化，返回空陣列（不使用 localStorage 避免不同瀏覽器顯示不同）');
+    return [];
   }
 
   try {
+    console.log('📥 開始從資料庫載入排程項目...');
+    
     const { data, error } = await supabase
       .from(TABLES.SCHEDULE_ITEMS)
       .select('*')
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('載入排程項目失敗:', error);
-      return loadFromLocalStorage();
+      console.error('❌ 載入排程項目失敗:', error);
+      // 不再回退到 localStorage，直接返回空陣列
+      // 這樣所有瀏覽器都會顯示相同的狀態（空），不會因為 localStorage 不同而顯示不同
+      return [];
     }
 
     // 確保 data 存在且為陣列
     if (!data || !Array.isArray(data)) {
-      console.warn('資料格式不正確，使用 localStorage');
-      return loadFromLocalStorage();
+      console.warn('⚠️ 資料格式不正確，返回空陣列');
+      return [];
     }
 
-    return data.map(dbToScheduleItem);
+    const items = data.map(dbToScheduleItem);
+    console.log('✅ 從資料庫載入成功，共', items.length, '筆');
+    
+    // 同步更新 localStorage（作為備用，但不作為主要數據源）
+    saveToLocalStorage(items);
+    
+    return items;
   } catch (error) {
-    console.error('載入排程項目異常:', error);
-    return loadFromLocalStorage();
+    console.error('❌ 載入排程項目異常:', error);
+    // 不再回退到 localStorage，直接返回空陣列
+    return [];
   }
 }
 

@@ -24,6 +24,7 @@ import BatchSearch from "./BatchSearch";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useQCStatus } from "@/hooks/useQCStatus";
 import { useSuggestedSchedule } from "@/hooks/useSuggestedSchedule";
+import { useRealtimeSchedule } from "@/hooks/useRealtimeSchedule";
 import { supabase, TABLES } from "@/lib/supabase";
 
 interface SwimlaneProps {
@@ -131,6 +132,7 @@ function getBlocksForDate(
 
 export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 使用資料庫 Hook（自動載入和儲存）
+  // 注意：不使用 initialItems（模擬資料），讓 useScheduleData 從資料庫載入
   const {
     items: dbItems,
     isLoading: isDataLoading,
@@ -138,10 +140,11 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     updateItems: saveScheduleItems,
     deleteItem: deleteScheduleItem,
     loadData: reloadScheduleData,
-  } = useScheduleData(initialItems);
+  } = useScheduleData([]); // 傳入空陣列，強制從資料庫載入
 
   // 本地狀態管理（用於即時更新 UI）
-  const [localItems, setLocalItems] = useState<ScheduleItem[]>(initialItems);
+  // 初始值設為空陣列，等待資料庫載入完成
+  const [localItems, setLocalItems] = useState<ScheduleItem[]>([]);
   const [history, setHistory] = useState<ScheduleItem[][]>([]); // 歷史記錄 (用於回上一步)
 
   // 同步資料庫資料到本地狀態
@@ -204,10 +207,19 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   }, [dbItems, isDataLoading, isDeleting, isImporting, isClearing]);
 
   // 包裝的更新函數：先更新本地狀態，然後非同步儲存到資料庫
+  // 注意：當 isApplyingRealtimeChangeRef.current 為 true 時，不應該調用此函數
+  // （因為 Realtime 變更時已經直接更新了 localItems）
   const setScheduleItems = (updater: ScheduleItem[] | ((prev: ScheduleItem[]) => ScheduleItem[])) => {
+    // 如果正在應用 Realtime 變更，不應該手動觸發保存（避免循環）
+    if (isApplyingRealtimeChangeRef.current) {
+      console.warn('⚠️ 正在應用 Realtime 變更，跳過手動保存以避免循環');
+      return;
+    }
+    
     setLocalItems((prev) => {
       const newItems = typeof updater === 'function' ? updater(prev) : updater;
       // 非同步儲存到資料庫（不阻塞 UI）
+      // 這會觸發 Supabase Realtime 事件，其他分頁會收到變更
       saveScheduleItems(newItems).catch((err) => {
         console.error('自動儲存失敗:', err);
       });
@@ -247,6 +259,56 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   
   // 建議排程
   const { getSuggestedSchedule, importSchedules } = useSuggestedSchedule();
+  
+  // 即時同步排程資料（跨分頁/跨裝置同步）
+  // 使用 ref 來追蹤是否正在應用 Realtime 變更，避免循環保存
+  const isApplyingRealtimeChangeRef = useRef(false);
+  
+  const { isSubscribed } = useRealtimeSchedule({
+    enabled: true,
+    onScheduleChange: (items) => {
+      // 標記正在應用 Realtime 變更，避免觸發保存循環
+      isApplyingRealtimeChangeRef.current = true;
+      
+      console.log('🔄 [Realtime] 收到即時變更，更新本地狀態，共', items.length, '筆');
+      console.log('📝 變更來源：其他分頁/裝置');
+      
+      // 直接更新本地狀態（不觸發 setScheduleItems，避免循環保存）
+      setLocalItems(items);
+      
+      // 同時更新 useScheduleData 的內部狀態，確保一致性
+      // 但不觸發保存（因為資料已經在資料庫中了）
+      
+      // 同步更新 localStorage（作為備用，但不同瀏覽器會不同，所以僅作為備用）
+      try {
+        localStorage.setItem('factory_schedule_items', JSON.stringify(items));
+      } catch (err) {
+        console.warn('⚠️ 更新 localStorage 失敗:', err);
+      }
+      
+      // 重置標記（使用 setTimeout 確保在下一個事件循環中重置）
+      setTimeout(() => {
+        isApplyingRealtimeChangeRef.current = false;
+      }, 1000);
+    },
+    onError: (error) => {
+      console.error('❌ 即時同步錯誤:', error);
+      console.error('💡 提示：請檢查 Supabase Dashboard > Database > Replication 是否已啟用 schedule_items 表的 Realtime');
+      console.error('💡 或者執行 SQL: ALTER PUBLICATION supabase_realtime ADD TABLE public.schedule_items;');
+    },
+  });
+
+  // 顯示即時同步狀態（用於調試）
+  useEffect(() => {
+    if (isSubscribed) {
+      console.log('✅ 即時同步已啟用，多分頁變更會自動同步（約 1-2 秒延遲）');
+    } else {
+      console.warn('⚠️ 即時同步未啟用');
+      console.warn('💡 請檢查：1. Supabase Dashboard > Database > Replication > 啟用 schedule_items 的 Realtime');
+      console.warn('💡 請檢查：2. 網路連線是否正常');
+      console.warn('💡 請檢查：3. 重新整理頁面後再試');
+    }
+  }, [isSubscribed]);
   
   // 載入存檔
   const handleLoadSnapshot = useCallback((items: ScheduleItem[], configs: Record<string, LineConfig>) => {
@@ -1215,6 +1277,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           onLoadSnapshot={handleLoadSnapshot}
           getSuggestedSchedule={getSuggestedSchedule}
           onImportSuggestedSchedule={importSchedules}
+          onRefreshData={reloadScheduleData}
         />
 
         {/* 右側：產線區域 */}
