@@ -21,31 +21,45 @@ DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
 DROP POLICY IF EXISTS "Allow authenticated users to insert" ON public.user_profiles;
 
 -- 刪除其他表的政策（避免查詢 user_profiles）
+-- 注意：刪除所有可能的名稱變體，因為可能之前已經部分執行過
 DROP POLICY IF EXISTS "Authenticated users can view schedule_items" ON public.schedule_items;
+DROP POLICY IF EXISTS "Authenticated users can insert schedule_items" ON public.schedule_items;
+DROP POLICY IF EXISTS "Authenticated users can update schedule_items" ON public.schedule_items;
+DROP POLICY IF EXISTS "Authenticated users can delete schedule_items" ON public.schedule_items;
 DROP POLICY IF EXISTS "Admin and operator can insert schedule_items" ON public.schedule_items;
 DROP POLICY IF EXISTS "Admin and operator can update schedule_items" ON public.schedule_items;
 DROP POLICY IF EXISTS "Only admin can delete schedule_items" ON public.schedule_items;
+-- 刪除可能存在的舊政策名稱
+DROP POLICY IF EXISTS "Allow all operations on schedule_items" ON public.schedule_items;
 
 DROP POLICY IF EXISTS "Authenticated users can view line_configs" ON public.line_configs;
+DROP POLICY IF EXISTS "Authenticated users can update line_configs" ON public.line_configs;
 DROP POLICY IF EXISTS "Only admin can update line_configs" ON public.line_configs;
 
 DROP POLICY IF EXISTS "Authenticated users can view suggested_schedules" ON public.suggested_schedules;
+DROP POLICY IF EXISTS "Authenticated users can insert suggested_schedules" ON public.suggested_schedules;
+DROP POLICY IF EXISTS "Authenticated users can update suggested_schedules" ON public.suggested_schedules;
+DROP POLICY IF EXISTS "Authenticated users can delete suggested_schedules" ON public.suggested_schedules;
 DROP POLICY IF EXISTS "Admin and operator can insert suggested_schedules" ON public.suggested_schedules;
 DROP POLICY IF EXISTS "Only admin can update suggested_schedules" ON public.suggested_schedules;
 DROP POLICY IF EXISTS "Only admin can delete suggested_schedules" ON public.suggested_schedules;
 
 -- 2. 建立簡化的 user_profiles 政策（只允許用戶查看和更新自己的資料，不檢查角色）
+-- 先刪除（如果存在）再建立，確保可以重複執行
+DROP POLICY IF EXISTS "Users can view own profile" ON public.user_profiles;
 CREATE POLICY "Users can view own profile"
   ON public.user_profiles
   FOR SELECT
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
 CREATE POLICY "Users can update own profile"
   ON public.user_profiles
   FOR UPDATE
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Allow authenticated users to insert" ON public.user_profiles;
 CREATE POLICY "Allow authenticated users to insert"
   ON public.user_profiles
   FOR INSERT
@@ -55,33 +69,41 @@ CREATE POLICY "Allow authenticated users to insert"
 -- 這樣可以避免查詢 user_profiles 造成的遞迴問題
 
 -- schedule_items 表：所有已登入用戶都可以操作
+-- 先刪除（如果存在）再建立，確保可以重複執行
+DROP POLICY IF EXISTS "Authenticated users can view schedule_items" ON public.schedule_items;
 CREATE POLICY "Authenticated users can view schedule_items"
   ON public.schedule_items
   FOR SELECT
   USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can insert schedule_items" ON public.schedule_items;
 CREATE POLICY "Authenticated users can insert schedule_items"
   ON public.schedule_items
   FOR INSERT
   WITH CHECK (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can update schedule_items" ON public.schedule_items;
 CREATE POLICY "Authenticated users can update schedule_items"
   ON public.schedule_items
   FOR UPDATE
   USING (auth.role() = 'authenticated')
   WITH CHECK (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can delete schedule_items" ON public.schedule_items;
 CREATE POLICY "Authenticated users can delete schedule_items"
   ON public.schedule_items
   FOR DELETE
   USING (auth.role() = 'authenticated');
 
 -- line_configs 表：所有已登入用戶都可以操作
+-- 先刪除（如果存在）再建立，確保可以重複執行
+DROP POLICY IF EXISTS "Authenticated users can view line_configs" ON public.line_configs;
 CREATE POLICY "Authenticated users can view line_configs"
   ON public.line_configs
   FOR SELECT
   USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can update line_configs" ON public.line_configs;
 CREATE POLICY "Authenticated users can update line_configs"
   ON public.line_configs
   FOR UPDATE
@@ -89,22 +111,27 @@ CREATE POLICY "Authenticated users can update line_configs"
   WITH CHECK (auth.role() = 'authenticated');
 
 -- suggested_schedules 表：所有已登入用戶都可以操作
+-- 先刪除（如果存在）再建立，確保可以重複執行
+DROP POLICY IF EXISTS "Authenticated users can view suggested_schedules" ON public.suggested_schedules;
 CREATE POLICY "Authenticated users can view suggested_schedules"
   ON public.suggested_schedules
   FOR SELECT
   USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can insert suggested_schedules" ON public.suggested_schedules;
 CREATE POLICY "Authenticated users can insert suggested_schedules"
   ON public.suggested_schedules
   FOR INSERT
   WITH CHECK (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can update suggested_schedules" ON public.suggested_schedules;
 CREATE POLICY "Authenticated users can update suggested_schedules"
   ON public.suggested_schedules
   FOR UPDATE
   USING (auth.role() = 'authenticated')
   WITH CHECK (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can delete suggested_schedules" ON public.suggested_schedules;
 CREATE POLICY "Authenticated users can delete suggested_schedules"
   ON public.suggested_schedules
   FOR DELETE
