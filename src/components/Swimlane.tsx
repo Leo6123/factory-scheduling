@@ -164,9 +164,16 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           return prev;
         }
         
+        // 如果 prev 是空陣列，但 dbItems 有資料，應該使用 dbItems（從資料庫載入的資料）
+        // 這通常發生在首次載入或重新整理時
+        if (prev.length === 0 && dbItemsArray.length > 0) {
+          console.log('✅ 本地狀態為空，使用資料庫資料（', dbItemsArray.length, '筆）');
+          return dbItemsArray;
+        }
+        
         // 如果 prev 的項目數少於 dbItems，可能是因為刪除操作
         // 檢查 prev 中的項目是否都在 dbItems 中
-        if (prev.length < dbItemsArray.length) {
+        if (prev.length < dbItemsArray.length && prev.length > 0) {
           const prevIds = new Set(prev.map(item => item.id));
           const missingInDb = dbItemsArray.filter(item => !prevIds.has(item.id));
           // 如果 dbItems 包含 prev 中沒有的項目，可能是重新載入時載入到舊資料

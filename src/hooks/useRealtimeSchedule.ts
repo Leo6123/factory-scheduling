@@ -121,15 +121,16 @@ export function useRealtimeSchedule(options: UseRealtimeScheduleOptions = {}) {
   }, []);
 
   // 組件掛載時訂閱，卸載時取消
+  // 注意：不要將 isSubscribed 加入依賴項，避免無限循環
   useEffect(() => {
-    if (enabled) {
+    if (enabled && !isSubscribed) {
       subscribe();
     }
 
     return () => {
       unsubscribe();
     };
-  }, [enabled, subscribe, unsubscribe, isSubscribed]);
+  }, [enabled]); // 只依賴 enabled，不依賴 isSubscribed 和函數引用
 
   return {
     subscribe,

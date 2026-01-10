@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }, TIMEOUT_MS);
       });
 
-      // 獲取用戶角色（帶超時保護，getUserRole 內部已有 5 秒超時）
+      // 獲取用戶角色（帶超時保護，getUserRole 內部已有 2 秒超時）
       const rolePromise = getUserRole(supabaseUser);
       const role = await Promise.race([
         rolePromise,
