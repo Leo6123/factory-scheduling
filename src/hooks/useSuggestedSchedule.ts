@@ -113,18 +113,7 @@ async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promi
     return true; // 僅使用 localStorage
   }
 
-  // 設定超時保護（20 秒）
-  const TIMEOUT_MS = 20000;
-  let timeoutId: NodeJS.Timeout | null = null;
-
   try {
-    // 創建超時 Promise
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error('Supabase 儲存超時（20 秒），資料已儲存到本地'));
-      }, TIMEOUT_MS);
-    });
-
     // 轉換為資料庫格式
     const dbItems = schedules.map((schedule) => ({
       material_number: schedule.materialNumber,
@@ -140,22 +129,37 @@ async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promi
     let hasError = false;
 
     if (dbItems.length > BATCH_SIZE) {
-      console.log(`📦 資料量較大 (${dbItems.length} 筆)，使用批次處理 (每批 ${BATCH_SIZE} 筆)`);
+      const totalBatches = Math.ceil(dbItems.length / BATCH_SIZE);
+      console.log(`📦 資料量較大 (${dbItems.length} 筆)，使用批次處理 (每批 ${BATCH_SIZE} 筆，共 ${totalBatches} 批)`);
       
+      // 批次處理（每個批次有獨立的超時保護，但總體不設超時限制，讓所有批次完成）
       for (let i = 0; i < dbItems.length; i += BATCH_SIZE) {
         const batch = dbItems.slice(i, i + BATCH_SIZE);
         const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(dbItems.length / BATCH_SIZE);
         
         console.log(`📦 處理批次 ${batchNum}/${totalBatches} (${batch.length} 筆)...`);
         
         try {
-          const { error: batchError } = await supabase
+          // 每個批次設定單獨的超時（15 秒），避免單一批次卡住
+          const batchTimeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error(`批次 ${batchNum} 超時（15 秒）`));
+            }, 15000);
+          });
+          
+          const upsertPromise = supabase
             .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
             .upsert(batch, { onConflict: 'material_number' });
 
+          const { error: batchError } = await Promise.race([
+            upsertPromise.then(result => result),
+            batchTimeoutPromise,
+          ]) as { error: any };
+
           if (batchError) {
             console.error(`❌ 批次 ${batchNum} 儲存失敗:`, batchError);
+            console.error('錯誤代碼:', batchError.code);
+            console.error('錯誤訊息:', batchError.message);
             hasError = true;
             // 繼續處理其他批次，不完全失敗
           } else {
@@ -164,10 +168,14 @@ async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promi
           }
         } catch (batchErr: any) {
           console.error(`❌ 批次 ${batchNum} 異常:`, batchErr);
+          if (batchErr.message?.includes('超時')) {
+            console.warn(`⚠️ 批次 ${batchNum} 超時，跳過此批次，繼續處理下一批`);
+          }
           hasError = true;
         }
       }
       
+      // 所有批次處理完成後才返回結果
       if (hasError) {
         console.warn(`⚠️ 部分批次儲存失敗，成功: ${totalProcessed}/${dbItems.length} 筆`);
         // 即使有部分失敗，因為 localStorage 已保存，所以返回 true
@@ -178,53 +186,49 @@ async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promi
       return true;
     }
 
-    // 資料量不大，直接使用 upsert（帶超時保護）
-    const upsertPromise = supabase
-      .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
-      .upsert(dbItems, { onConflict: 'material_number' });
+      // 資料量不大，直接使用 upsert（單一批次超時：15 秒）
+      const singleBatchTimeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Supabase 儲存超時（15 秒），資料已儲存到本地'));
+        }, 15000);
+      });
+      
+      const upsertPromise = supabase
+        .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
+        .upsert(dbItems, { onConflict: 'material_number' });
 
-    const { error } = await Promise.race([
-      upsertPromise.then(result => result),
-      timeoutPromise,
-    ]) as { error: any };
+      const { error } = await Promise.race([
+        upsertPromise.then(result => result),
+        singleBatchTimeoutPromise,
+      ]) as { error: any };
 
-    // 清除超時
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
+      if (error) {
+        console.error('❌ 儲存建議排程到 Supabase 失敗:', error);
+        console.error('錯誤代碼:', error.code);
+        console.error('錯誤訊息:', error.message);
+        // 即使 Supabase 失敗，localStorage 已保存，所以返回 true
+        console.warn('⚠️ 資料已儲存到 localStorage，但 Supabase 儲存失敗');
+        return true; // 因為 localStorage 已保存，所以返回 true
+      }
 
-    if (error) {
-      console.error('❌ 儲存建議排程到 Supabase 失敗:', error);
-      console.error('錯誤代碼:', error.code);
-      console.error('錯誤訊息:', error.message);
-      // 即使 Supabase 失敗，localStorage 已保存，所以返回 true
-      console.warn('⚠️ 資料已儲存到 localStorage，但 Supabase 儲存失敗');
+      console.log(`✅ 成功儲存 ${schedules.length} 筆建議排程到 Supabase`);
+      return true;
+    } catch (error: any) {
+      console.error('❌ 儲存建議排程異常:', error);
+      
+      // 檢查是否是超時錯誤
+      if (error.message?.includes('超時')) {
+        console.warn('⚠️ Supabase 儲存超時，但資料已儲存到 localStorage');
+        // 如果是批次處理中的超時，可能部分批次已成功，所以仍然返回 true
+        return true;
+      } else {
+        console.warn('⚠️ 資料已儲存到 localStorage，但 Supabase 儲存異常');
+      }
+      
+      // 即使異常，localStorage 已保存，所以返回 true
       return true; // 因為 localStorage 已保存，所以返回 true
     }
-
-    console.log(`✅ 成功儲存 ${schedules.length} 筆建議排程到 Supabase`);
-    return true;
-  } catch (error: any) {
-    // 清除超時
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-
-    console.error('❌ 儲存建議排程異常:', error);
-    
-    // 檢查是否是超時錯誤
-    if (error.message?.includes('超時')) {
-      console.warn('⚠️ Supabase 儲存超時，資料已儲存到 localStorage');
-    } else {
-      console.warn('⚠️ 資料已儲存到 localStorage，但 Supabase 儲存異常');
-    }
-    
-    // 即使異常，localStorage 已保存，所以返回 true
-    return true; // 因為 localStorage 已保存，所以返回 true
   }
-}
 
 // 自訂 Hook：管理建議排程資料
 export function useSuggestedSchedule() {
