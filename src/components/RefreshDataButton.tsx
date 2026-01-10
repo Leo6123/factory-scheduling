@@ -52,7 +52,7 @@ export default function RefreshDataButton({ onRefresh, className = '' }: Refresh
                    ? "bg-gray-600 cursor-not-allowed opacity-50"
                    : "bg-purple-600 hover:bg-purple-500 active:scale-95"
                  } ${className}`}
-      title="清除本地緩存並從資料庫重新載入資料（用於解決不同瀏覽器顯示不同的問題）"
+      title="清除本地緩存並從資料庫重新載入資料（僅在 Realtime 同步失敗或資料不一致時使用）\n\n注意：由於已啟用 Realtime 同步，資料會自動同步。此按鈕會重新整理整個頁面。"
     >
       <svg 
         className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`}

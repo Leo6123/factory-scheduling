@@ -14,7 +14,7 @@ import CleaningProcessForm from "./CleaningProcessForm";
 import MaintenanceForm from "./MaintenanceForm";
 import MixTankForm from "./MixTankForm";
 import ImportSuggestedScheduleButton from "./ImportSuggestedScheduleButton";
-import RefreshDataButton from "./RefreshDataButton";
+// import RefreshDataButton from "./RefreshDataButton"; // 已移除：Realtime 同步已自動處理資料更新
 import { useAuth } from "@/contexts/AuthContext";
 
 interface UnscheduledSidebarProps {
@@ -214,12 +214,16 @@ export default function UnscheduledSidebar({
             </div>
           )}
           
-          {/* 重新載入資料 - 所有用戶都可以使用 */}
+          {/* 重新載入資料按鈕已移除 - Realtime 同步已自動處理資料更新 */}
+          {/* 注意：由於已啟用 Supabase Realtime 同步，所有資料變更（INSERT/UPDATE/DELETE）會自動同步到所有分頁 */}
+          {/* 如果需要強制重新載入，可以重新整理頁面（F5 或 Ctrl+R） */}
+          {/* 
           {onRefreshData && (
             <div className="w-full">
               <RefreshDataButton onRefresh={onRefreshData} />
             </div>
           )}
+          */}
           
           {/* 垃圾桶 - 拖曳時顯示 */}
           <div
