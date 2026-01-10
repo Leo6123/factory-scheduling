@@ -17,82 +17,82 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     }
   }, [user, loading, router]);
 
-  // 檢查並監聽 sessionStorage 中的標記
+  // 直接使用 BroadcastChannel 檢測其他分頁
   useEffect(() => {
     if (loading || !user || typeof window === 'undefined') {
       return;
     }
 
-    let checkCount = 0;
-    const maxChecks = 20; // 檢查 20 次，每次間隔 250ms = 總共 5 秒
-
-    // 檢查函數
-    const checkDialog = () => {
-      checkCount++;
-      const shouldShowDialog = sessionStorage.getItem('show_multitab_dialog') === 'true';
-      const dialogEmail = sessionStorage.getItem('multitab_email');
-      
-      console.log(`[ProtectedRoute] 檢查對話框標記 (${checkCount}/${maxChecks}):`, { 
-        shouldShowDialog, 
-        dialogEmail, 
-        userEmail: user.email,
-        showConfirmDialog 
-      });
-      
-      if (shouldShowDialog && dialogEmail === user.email && !showConfirmDialog) {
-        console.log('⚠️ [ProtectedRoute] 顯示多分頁確認對話框！');
-        setShowConfirmDialog(true);
-        setHasCheckedMultipleTabs(true);
-        // 清除標記，避免重複顯示
-        sessionStorage.removeItem('show_multitab_dialog');
-        sessionStorage.removeItem('multitab_email');
-        return true; // 找到標記，停止檢查
-      }
-      
-      if (checkCount >= maxChecks && !hasCheckedMultipleTabs) {
-        console.log('✅ [ProtectedRoute] 檢查完成，沒有檢測到多分頁標記');
-        setHasCheckedMultipleTabs(true);
-      }
-      
-      return false;
-    };
-
-    // 立即檢查一次
-    if (checkDialog()) {
-      return; // 如果已經顯示對話框，不需要繼續檢查
-    }
-
-    // 監聽 BroadcastChannel 消息（當 AuthContext 設置標記時也會發送消息）
+    console.log('🔍 [ProtectedRoute] 設置分頁檢測，用戶:', user.email, '已檢查:', hasCheckedMultipleTabs);
     const channel = new BroadcastChannel('tab_detection');
+    const tabId = `pr_tab_${Date.now()}_${Math.random()}`;
+    let hasOtherTab = false;
+    let respondedTabs = new Set<string>();
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // 監聽其他分頁的消息
     const messageHandler = (event: MessageEvent) => {
-      if (event.data.type === 'SHOW_MULTITAB_DIALOG' && event.data.email === user.email) {
-        console.log('📢 [ProtectedRoute] 收到 BroadcastChannel 消息，需要顯示對話框');
-        checkDialog();
+      console.log('📡 [ProtectedRoute] 收到消息:', event.data);
+      
+      // 收到其他分頁的「我還活著」消息
+      if (event.data.type === 'TAB_ALIVE' && event.data.email === user.email) {
+        if (event.data.tabId && event.data.tabId !== tabId) {
+          if (!respondedTabs.has(event.data.tabId)) {
+            respondedTabs.add(event.data.tabId);
+            if (!hasOtherTab && !showConfirmDialog) {
+              hasOtherTab = true;
+              console.log('⚠️ [ProtectedRoute] 檢測到其他分頁正在使用此帳號，tabId:', event.data.tabId);
+              setShowConfirmDialog(true);
+              setHasCheckedMultipleTabs(true);
+              // 清除 timeout（如果存在）
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+              }
+            }
+          }
+        }
+      } 
+      // 收到檢測請求，回應說明這個分頁存在（這是關鍵！讓舊分頁能回應新分頁）
+      else if (event.data.type === 'TAB_DETECTION_REQUEST' && event.data.email === user.email) {
+        console.log('📤 [ProtectedRoute] 回應檢測請求，說明此分頁存在，tabId:', tabId);
+        channel.postMessage({ type: 'TAB_ALIVE', tabId, email: user.email });
       }
     };
+
     channel.addEventListener('message', messageHandler);
 
-    // 定期檢查（每 250ms 檢查一次）
-    const checkInterval = setInterval(() => {
-      if (!showConfirmDialog && checkCount < maxChecks) {
-        if (checkDialog()) {
-          clearInterval(checkInterval);
-          channel.removeEventListener('message', messageHandler);
-          channel.close();
-        }
-      } else if (checkCount >= maxChecks || showConfirmDialog) {
-        clearInterval(checkInterval);
-        channel.removeEventListener('message', messageHandler);
-        channel.close();
-      }
-    }, 250);
+    // 只在首次檢查時發送檢測請求
+    if (!hasCheckedMultipleTabs) {
+      console.log('📤 [ProtectedRoute] 首次檢查，發送檢測請求');
+      // 立即發送「我還活著」消息
+      channel.postMessage({ type: 'TAB_ALIVE', tabId, email: user.email });
+      
+      // 請求其他分頁回應
+      channel.postMessage({ type: 'TAB_DETECTION_REQUEST', email: user.email });
 
+      // 等待 2 秒看是否有回應
+      timeoutId = setTimeout(() => {
+        if (!hasOtherTab && !showConfirmDialog) {
+          console.log('✅ [ProtectedRoute] 這是唯一的分頁，沒有檢測到其他分頁');
+          setHasCheckedMultipleTabs(true);
+        }
+        timeoutId = null;
+      }, 2000);
+    } else {
+      // 如果已經檢查過，仍然監聽檢測請求（讓舊分頁能回應新分頁）
+      console.log('👂 [ProtectedRoute] 已檢查過，但仍持續監聽檢測請求');
+    }
+
+    // 保持 channel 打開，持續監聽（讓新分頁能檢測到這個分頁）
     return () => {
-      clearInterval(checkInterval);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       channel.removeEventListener('message', messageHandler);
       channel.close();
     };
-  }, [user, loading, showConfirmDialog, hasCheckedMultipleTabs]);
+  }, [user, loading]); // 只在 user 或 loading 改變時重新執行
 
   const handleConfirmLogout = async () => {
     setShowConfirmDialog(false);

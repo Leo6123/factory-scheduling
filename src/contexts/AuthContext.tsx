@@ -251,84 +251,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           console.log('✅ 找到現有會話，用戶:', session.user.email);
           
-          // 立即檢測是否有其他分頁（在設定用戶狀態之前）
-          if (typeof window !== 'undefined' && session.user.email) {
-            console.log('🔍 [AuthContext] 開始檢測其他分頁，用戶:', session.user.email);
-            const checkChannel = new BroadcastChannel('tab_detection');
-            const tabId = `tab_${Date.now()}_${Math.random()}`;
-            let hasOtherTab = false;
-            let respondedTabs = new Set<string>();
-            
-            // 監聽其他分頁的回應
-            const checkHandler = (event: MessageEvent) => {
-              console.log('📡 [AuthContext] 收到消息:', event.data);
-              
-              if (event.data.type === 'TAB_ALIVE' && event.data.email === session.user.email) {
-                if (event.data.tabId && event.data.tabId !== tabId) {
-                  // 收到其他分頁的「我還活著」消息
-                  if (!respondedTabs.has(event.data.tabId)) {
-                    respondedTabs.add(event.data.tabId);
-                    if (!hasOtherTab) {
-                      hasOtherTab = true;
-                    console.log('⚠️ [AuthContext] 檢測到其他分頁正在使用此帳號，tabId:', event.data.tabId);
-                    // 標記需要顯示確認對話框
-                    sessionStorage.setItem('show_multitab_dialog', 'true');
-                    sessionStorage.setItem('multitab_email', session.user.email || '');
-                    // 通過 BroadcastChannel 發送消息，通知 ProtectedRoute 立即檢查
-                    const notifyChannel = new BroadcastChannel('tab_detection');
-                    notifyChannel.postMessage({ 
-                      type: 'SHOW_MULTITAB_DIALOG', 
-                      email: session.user.email 
-                    });
-                    notifyChannel.close();
-                    }
-                    checkChannel.removeEventListener('message', checkHandler);
-                    checkChannel.close();
-                  }
-                }
-              } else if (event.data.type === 'TAB_DETECTION_REQUEST' && event.data.email === session.user.email) {
-                // 回應其他分頁的檢測請求（說明這個分頁也存在）
-                console.log('📤 [AuthContext] 回應檢測請求');
-                checkChannel.postMessage({ type: 'TAB_ALIVE', tabId, email: session.user.email });
-                // 如果收到請求，說明有其他分頁，但我們不設置標記（讓請求方設置）
-              }
-            };
-            
-            checkChannel.addEventListener('message', checkHandler);
-            
-            // 立即發送「我還活著」消息，讓其他分頁知道這個分頁存在
-            checkChannel.postMessage({ type: 'TAB_ALIVE', tabId, email: session.user.email });
-            
-            // 請求其他分頁回應
-            checkChannel.postMessage({ type: 'TAB_DETECTION_REQUEST', email: session.user.email });
-            
-            // 等待 1000ms 看是否有回應
-            setTimeout(() => {
-              if (!hasOtherTab) {
-                console.log('✅ [AuthContext] 這是唯一的分頁，沒有檢測到其他分頁');
-              } else {
-                console.log('⚠️ [AuthContext] 檢測完成，共檢測到', respondedTabs.size, '個其他分頁');
-              }
-              checkChannel.removeEventListener('message', checkHandler);
-              checkChannel.close();
-            }, 1000);
-            
-            // 定期發送「我還活著」消息（讓其他新打開的分頁能檢測到）
-            const keepAliveInterval = setInterval(() => {
-              if (!hasOtherTab) {
-                checkChannel.postMessage({ type: 'TAB_ALIVE', tabId, email: session.user.email });
-              }
-            }, 3000);
-            
-            // 清理（在 10 秒後停止 keep-alive）
-            setTimeout(() => {
-              clearInterval(keepAliveInterval);
-              checkChannel.close();
-            }, 10000);
-          }
-          
           // 立即設定 session 和基本用戶信息（不等待角色查詢完成）
           // 這樣可以讓用戶立即進入系統，角色查詢在後台完成
+          // 注意：多分頁檢測在 ProtectedRoute 中進行，這裡不需要檢測
           setSession(session);
           setUser({
             id: session.user.id,
@@ -464,45 +389,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 強制重新獲取用戶角色（不使用緩存）
         await updateUser(session.user, session);
         
-        // 設置持續監聽器，讓新分頁能檢測到這個分頁
-        if (typeof window !== 'undefined' && session.user.email) {
-          const persistentChannel = new BroadcastChannel('tab_detection');
-          const tabId = `persistent_tab_${session.user.id}`;
-          
-          persistentChannel.onmessage = (event) => {
-            // 如果有其他分頁請求檢測，回應
-            if (event.data.type === 'TAB_DETECTION_REQUEST' && event.data.email === session.user.email) {
-              console.log('📤 [AuthContext 持久監聽] 回應檢測請求，email:', session.user.email);
-              persistentChannel.postMessage({ 
-                type: 'TAB_ALIVE', 
-                tabId, 
-                email: session.user.email 
-              });
-            }
-          };
-          
-          // 定期發送「我還活著」消息（每 5 秒，讓新分頁能檢測到）
-          const keepAliveInterval = setInterval(() => {
-            if (mounted && session?.user?.email) {
-              persistentChannel.postMessage({ 
-                type: 'TAB_ALIVE', 
-                tabId, 
-                email: session.user.email 
-              });
-            } else {
-              clearInterval(keepAliveInterval);
-              persistentChannel.close();
-            }
-          }, 5000);
-          
-          // 60 秒後停止 keep-alive（避免無限運行）
-          setTimeout(() => {
-            clearInterval(keepAliveInterval);
-            if (!mounted) {
-              persistentChannel.close();
-            }
-          }, 60000);
-        }
+        // 注意：多分頁檢測在 ProtectedRoute 中進行，這裡不需要設置持續監聽器
       } else {
         // 已登出（可能是主動登出，或是在其他裝置/分頁登出）
         console.log('🔄 認證狀態變化：已登出，清除本地狀態');
