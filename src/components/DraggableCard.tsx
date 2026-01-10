@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ScheduleItem } from "@/types/schedule";
 import { getProductColor } from "@/utils/productColor";
 import { RecipeItem } from "@/types/recipe";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DraggableCardProps {
   item: ScheduleItem;
@@ -24,6 +25,8 @@ interface DraggableCardProps {
 }
 
 export default function DraggableCard({ item, color, onToggleCrystallization, onToggleCCD, onToggleDryblending, onTogglePackage, onToggle2Press, onToggle3Press, onQuantityChange, onMaterialReadyDateChange, onToggleAbnormalIncomplete, qcStatus, suggestedSchedule }: DraggableCardProps) {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('canEdit');
   const [isEditingQuantity, setIsEditingQuantity] = useState(false);
   const [editQuantity, setEditQuantity] = useState(item.quantity.toString());
   const [isEditingMaterialReadyDate, setIsEditingMaterialReadyDate] = useState(false);
@@ -33,9 +36,11 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
   // 根據 Material Number (productName) 的第三個字元判斷顏色
   const cardColor = color || getProductColor(item.productName);
 
+  // 只有有編輯權限的用戶才能拖曳卡片
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id,
     data: { item },
+    disabled: !canEdit, // 訪客無法拖曳
   });
 
   const style = {
@@ -137,11 +142,10 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      className={`rounded-lg p-3 shadow-md cursor-grab active:cursor-grabbing 
-                 hover:scale-[1.02] transition-transform duration-150
+      {...(canEdit ? { ...listeners, ...attributes } : {})} // 只有有編輯權限才能拖曳
+      className={`rounded-lg p-3 shadow-md transition-transform duration-150
                  border border-white/10 backdrop-blur-sm min-w-[180px]
+                 ${canEdit ? "cursor-grab active:cursor-grabbing hover:scale-[1.02]" : "cursor-default"}
                  ${isDragging ? "ring-2 ring-blue-500 shadow-lg shadow-blue-500/20" : ""}
                  ${item.isAbnormalIncomplete ? "ring-2 ring-red-500/70" : item.needsCrystallization ? "ring-1 ring-cyan-400/50" : ""}`}
     >
@@ -221,13 +225,13 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
             <span className="text-gray-500">批號:</span> {item.batchNumber}
           </div>
           
-          {/* 數量 - 可編輯 */}
+          {/* 數量 - 可編輯（需有編輯權限） */}
           <div 
             className="text-xs text-gray-300 mb-1"
             onPointerDown={(e) => isEditingQuantity && e.stopPropagation()}
           >
             <span className="text-gray-500">數量:</span>{" "}
-            {isEditingQuantity ? (
+            {isEditingQuantity && canEdit ? (
               <input
                 type="number"
                 value={editQuantity}
@@ -241,23 +245,23 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
               />
             ) : (
               <span 
-                className={`font-semibold text-emerald-400 ${onQuantityChange ? "cursor-pointer hover:underline hover:text-emerald-300" : ""}`}
-                onClick={handleQuantityClick}
-                title={onQuantityChange ? "點擊編輯數量" : undefined}
+                className={`font-semibold text-emerald-400 ${canEdit && onQuantityChange ? "cursor-pointer hover:underline hover:text-emerald-300" : ""}`}
+                onClick={canEdit ? handleQuantityClick : undefined}
+                title={canEdit && onQuantityChange ? "點擊編輯數量" : undefined}
               >
                 {item.quantity.toLocaleString()} KG
               </span>
             )}
           </div>
           
-          {/* 齊料時間 - 可編輯（已排程時或混合缸卡片） */}
+          {/* 齊料時間 - 可編輯（已排程時或混合缸卡片，需有編輯權限） */}
           {(item.scheduleDate || item.materialDescription === "混合缸排程") && (
             <div 
               className="text-xs text-gray-300 mb-1"
               onPointerDown={(e) => isEditingMaterialReadyDate && e.stopPropagation()}
             >
               <span className="text-gray-500">齊料時間:</span>{" "}
-              {isEditingMaterialReadyDate ? (
+              {isEditingMaterialReadyDate && canEdit ? (
                 <input
                   type="date"
                   value={editMaterialReadyDate}
@@ -269,11 +273,11 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
                 />
               ) : (
                 <span 
-                  className={`text-purple-400 ${onMaterialReadyDateChange ? "cursor-pointer hover:underline hover:text-purple-300" : ""}`}
-                  onClick={handleMaterialReadyDateClick}
-                  title={onMaterialReadyDateChange ? "點擊編輯齊料時間" : undefined}
+                  className={`text-purple-400 ${canEdit && onMaterialReadyDateChange ? "cursor-pointer hover:underline hover:text-purple-300" : ""}`}
+                  onClick={canEdit ? handleMaterialReadyDateClick : undefined}
+                  title={canEdit && onMaterialReadyDateChange ? "點擊編輯齊料時間" : undefined}
                 >
-                  {item.materialReadyDate || (onMaterialReadyDateChange ? "點擊設定" : "")}
+                  {item.materialReadyDate || (canEdit && onMaterialReadyDateChange ? "點擊設定" : "")}
                 </span>
               )}
             </div>
@@ -349,32 +353,38 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
         </div>
       )}
       
-      {/* 看配方 - 展開/收合 */}
+      {/* 看配方 - 訪客只能查看（自動展開），有編輯權限可以展開/收合 */}
       {item.recipeItems && item.recipeItems.length > 0 && (
         <div className="text-xs mb-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsRecipeExpanded(!isRecipeExpanded);
-            }}
-            className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
-          >
-            <span className="text-gray-500">看配方:</span>
-            <span className="font-medium">
-              {isRecipeExpanded ? "收合" : "展開"} ({item.recipeItems.length} 項)
-            </span>
-            <svg
-              className={`w-3 h-3 transition-transform ${isRecipeExpanded ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {canEdit ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsRecipeExpanded(!isRecipeExpanded);
+              }}
+              className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <span className="text-gray-500">看配方:</span>
+              <span className="font-medium">
+                {isRecipeExpanded ? "收合" : "展開"} ({item.recipeItems.length} 項)
+              </span>
+              <svg
+                className={`w-3 h-3 transition-transform ${isRecipeExpanded ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          ) : (
+            <div className="text-gray-500">
+              看配方: <span className="text-gray-400">({item.recipeItems.length} 項)</span>
+            </div>
+          )}
           
-          {/* 配方列表 - 展開時顯示 */}
-          {isRecipeExpanded && (
+          {/* 配方列表 - 有編輯權限時可展開/收合，訪客自動顯示 */}
+          {(canEdit ? isRecipeExpanded : true) && (
             <div className="mt-2 ml-4 space-y-1.5 border-l-2 border-blue-500/30 pl-3">
               {item.recipeItems.map((recipe: RecipeItem, idx: number) => (
                 <div key={idx} className="text-[11px] text-gray-300 bg-gray-800/50 rounded p-1.5">
@@ -416,8 +426,8 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
         </div>
       )}
 
-      {/* 勾選選項 - 清機流程、故障維修和混合缸排程不顯示 */}
-      {!item.isCleaningProcess && !item.isMaintenance && item.materialDescription !== "混合缸排程" && (onToggleCrystallization || onToggleCCD || onToggleDryblending || onTogglePackage || onToggle2Press || onToggle3Press || onToggleAbnormalIncomplete) && (
+      {/* 勾選選項 - 清機流程、故障維修和混合缸排程不顯示，訪客不顯示互動選項 */}
+      {!item.isCleaningProcess && !item.isMaintenance && item.materialDescription !== "混合缸排程" && canEdit && (onToggleCrystallization || onToggleCCD || onToggleDryblending || onTogglePackage || onToggle2Press || onToggle3Press || onToggleAbnormalIncomplete) && (
         <div 
           className="mt-2 pt-2 border-t border-white/10"
           onPointerDown={(e) => e.stopPropagation()}

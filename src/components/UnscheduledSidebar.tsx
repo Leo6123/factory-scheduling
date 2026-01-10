@@ -14,6 +14,7 @@ import CleaningProcessForm from "./CleaningProcessForm";
 import MaintenanceForm from "./MaintenanceForm";
 import MixTankForm from "./MixTankForm";
 import ImportSuggestedScheduleButton from "./ImportSuggestedScheduleButton";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface UnscheduledSidebarProps {
   items: ScheduleItem[];
@@ -74,6 +75,7 @@ export default function UnscheduledSidebar({
   getSuggestedSchedule,
   onImportSuggestedSchedule,
 }: UnscheduledSidebarProps) {
+  const { permissions, hasPermission } = useAuth();
   const { isOver, setNodeRef } = useDroppable({
     id: "UNSCHEDULED",
   });
@@ -97,15 +99,18 @@ export default function UnscheduledSidebar({
         
         {/* 操作按鈕 - 兩列佈局，統一大小 */}
         <div className="grid grid-cols-2 gap-1.5">
-          <div className="w-full">
-            <ImportExcelButton 
-              onImport={onImport} 
-              existingBatchIds={existingBatchIds}
-            />
-          </div>
+          {/* 匯入訂單 - 需要 canImport 權限 */}
+          {hasPermission('canImport') && (
+            <div className="w-full">
+              <ImportExcelButton 
+                onImport={onImport} 
+                existingBatchIds={existingBatchIds}
+              />
+            </div>
+          )}
           
-          {/* 混合缸新增表單 */}
-          {onAddItem && (
+          {/* 混合缸新增表單 - 需要 canEdit 權限 */}
+          {onAddItem && hasPermission('canEdit') && (
             <div className="w-full">
               <MixTankForm 
                 onAdd={onAddItem} 
@@ -115,8 +120,8 @@ export default function UnscheduledSidebar({
             </div>
           )}
           
-          {/* 新增卡片表單 */}
-          {onAddItem && (
+          {/* 新增卡片表單 - 需要 canEdit 權限 */}
+          {onAddItem && hasPermission('canEdit') && (
             <div className="w-full">
               <AddCardForm 
                 onAdd={onAddItem}
@@ -124,8 +129,8 @@ export default function UnscheduledSidebar({
             </div>
           )}
           
-          {/* NG修色新增表單 */}
-          {onAddItem && (
+          {/* NG修色新增表單 - 需要 canEdit 權限 */}
+          {onAddItem && hasPermission('canEdit') && (
             <div className="w-full">
               <AddNGColorForm 
                 onAdd={onAddItem} 
@@ -134,15 +139,15 @@ export default function UnscheduledSidebar({
             </div>
           )}
           
-          {/* 清機流程 */}
-          {onAddItem && (
+          {/* 清機流程 - 需要 canEdit 權限 */}
+          {onAddItem && hasPermission('canEdit') && (
             <div className="w-full">
               <CleaningProcessForm onAdd={onAddItem} />
             </div>
           )}
           
-          {/* 故障維修 */}
-          {onAddItem && (
+          {/* 故障維修 - 需要 canEdit 權限 */}
+          {onAddItem && hasPermission('canEdit') && (
             <div className="w-full">
               <MaintenanceForm onAdd={onAddItem} />
             </div>
@@ -169,31 +174,38 @@ export default function UnscheduledSidebar({
             </div>
           )}
           
-          <div className="w-full">
-            <ClearButton onClear={onClear} itemCount={totalItemCount} />
-          </div>
+          {/* 清除全部 - 需要 canClear 權限（已禁用但保留代碼） */}
+          {hasPermission('canClear') && (
+            <div className="w-full">
+              <ClearButton onClear={onClear} itemCount={totalItemCount} />
+            </div>
+          )}
           
-          {/* 匯出排程 */}
-          <div className="w-full">
-            <ExportExcelButton
-              scheduleItems={allScheduleItems}
-              lineConfigs={lineConfigs}
-              selectedYear={selectedYear}
-              selectedMonth={selectedMonth}
-            />
-          </div>
+          {/* 匯出排程 - 需要 canExport 權限 */}
+          {hasPermission('canExport') && (
+            <div className="w-full">
+              <ExportExcelButton
+                scheduleItems={allScheduleItems}
+                lineConfigs={lineConfigs}
+                selectedYear={selectedYear}
+                selectedMonth={selectedMonth}
+              />
+            </div>
+          )}
           
-          {/* 存檔功能 */}
-          <div className="w-full">
-            <SaveSnapshotButton
-              scheduleItems={allScheduleItems}
-              lineConfigs={lineConfigs}
-              onLoadSnapshot={onLoadSnapshot}
-            />
-          </div>
+          {/* 存檔功能 - 需要 canEdit 權限 */}
+          {hasPermission('canEdit') && (
+            <div className="w-full">
+              <SaveSnapshotButton
+                scheduleItems={allScheduleItems}
+                lineConfigs={lineConfigs}
+                onLoadSnapshot={onLoadSnapshot}
+              />
+            </div>
+          )}
           
-          {/* 匯入建議排程 */}
-          {onImportSuggestedSchedule && (
+          {/* 匯入建議排程 - 需要 canImport 權限 */}
+          {onImportSuggestedSchedule && hasPermission('canImport') && (
             <div className="w-full">
               <ImportSuggestedScheduleButton onImport={onImportSuggestedSchedule} />
             </div>

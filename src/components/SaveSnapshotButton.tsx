@@ -47,6 +47,52 @@ export default function SaveSnapshotButton({
     }
     
     try {
+      // 檢查認證狀態
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('❌ 用戶未登入或會話無效');
+        console.error('請先登入系統');
+        return false;
+      }
+      
+      console.log('✅ 認證狀態正常，用戶 ID:', session.user.id);
+      
+      // 檢查用戶角色（從 user_profiles 表）
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (profileError || !profile) {
+        console.error('❌ 無法獲取用戶角色:', profileError);
+        console.error('═══════════════════════════════════════');
+        console.error('問題：user_profiles 表中沒有該用戶的記錄');
+        console.error('═══════════════════════════════════════');
+        console.error('解決方法（選其中一個）：');
+        console.error('');
+        console.error('方法 1：手動在 Supabase SQL Editor 執行以下 SQL：');
+        console.error(`INSERT INTO public.user_profiles (id, email, role)`);
+        console.error(`VALUES ('${session.user.id}', '${session.user.email || 'unknown'}', 'admin');`);
+        console.error('（如果這是第一個用戶，使用 admin；其他用戶使用 operator）');
+        console.error('');
+        console.error('方法 2：在 Supabase Dashboard > Authentication > Users 中：');
+        console.error('1. 找到您的用戶（通過 email 或 user ID）');
+        console.error('2. 刪除該用戶');
+        console.error('3. 重新註冊（會自動觸發 handle_new_user 函數建立 user_profiles 記錄）');
+        console.error('═══════════════════════════════════════');
+        return false;
+      }
+      
+      console.log('✅ 用戶角色:', profile.role);
+      
+      if (profile.role !== 'admin' && profile.role !== 'operator') {
+        console.error('❌ 用戶沒有寫入權限');
+        console.error('當前角色:', profile.role);
+        console.error('需要角色: admin 或 operator');
+        return false;
+      }
+      
       // 測試讀取權限
       console.log('🔍 測試讀取權限...');
       const { data: readData, error: readError } = await supabase
@@ -58,9 +104,12 @@ export default function SaveSnapshotButton({
         console.error('❌ Supabase 讀取測試失敗:', readError);
         console.error('錯誤代碼:', readError.code);
         console.error('錯誤訊息:', readError.message);
-        if (readError.code === 'PGRST301' || readError.message?.includes('RLS')) {
-          console.error('⚠️ 可能是 RLS (Row Level Security) 政策問題');
-          console.error('請在 Supabase SQL Editor 執行 supabase_rls_policy.sql 腳本');
+        if (readError.code === 'PGRST301' || readError.message?.includes('RLS') || readError.message?.includes('permission')) {
+          console.error('⚠️ 這是 RLS (Row Level Security) 政策問題');
+          console.error('請確認：');
+          console.error('1. 已在 Supabase 執行 supabase_security_setup.sql');
+          console.error('2. RLS 政策已正確建立');
+          console.error('3. user_profiles 表中有該用戶的記錄且角色正確');
         }
         return false;
       }
@@ -79,15 +128,19 @@ export default function SaveSnapshotButton({
           quantity: 0,
           delivery_date: '2026-01-01',
           line_id: 'TEST',
-        }, { onConflict: 'id' });
+        }, { onConflict: 'id' })
+        .select();
       
       if (writeError) {
         console.error('❌ Supabase 寫入測試失敗:', writeError);
         console.error('錯誤代碼:', writeError.code);
         console.error('錯誤訊息:', writeError.message);
-        if (writeError.code === 'PGRST301' || writeError.message?.includes('RLS')) {
-          console.error('⚠️ 可能是 RLS (Row Level Security) 政策問題');
-          console.error('請在 Supabase SQL Editor 執行 supabase_rls_policy.sql 腳本');
+        if (writeError.code === 'PGRST301' || writeError.message?.includes('RLS') || writeError.message?.includes('permission')) {
+          console.error('⚠️ 這是 RLS (Row Level Security) 政策問題');
+          console.error('請確認：');
+          console.error('1. 已在 Supabase 執行 supabase_security_setup.sql');
+          console.error('2. RLS 政策中的 "Admin and operator can insert schedule_items" 政策已建立');
+          console.error('3. user_profiles 表中該用戶的角色是 admin 或 operator');
         }
         return false;
       }
@@ -101,8 +154,9 @@ export default function SaveSnapshotButton({
       console.log('✅ 寫入權限 OK');
       console.log('✅ Supabase 連接正常，所有權限 OK');
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Supabase 連接測試異常:', err);
+      console.error('錯誤詳情:', err.message || err);
       return false;
     }
   };
@@ -122,8 +176,17 @@ export default function SaveSnapshotButton({
       // 測試 Supabase 連接
       const connectionOk = await testSupabaseConnection();
       if (!connectionOk) {
-        alert('⚠️ Supabase 連接測試失敗\n\n請檢查：\n1. 環境變數是否正確設定\n2. Supabase 專案是否正常運行\n3. 瀏覽器控制台 (F12) 的錯誤訊息');
-        return;
+        // 不阻止存檔，但顯示警告（已保存到 localStorage）
+        // 詳細錯誤訊息已在 console 中顯示
+        const shouldContinue = window.confirm(
+          '⚠️ Supabase 連接測試失敗\n\n' +
+          '資料已保存到本地（localStorage）\n\n' +
+          '請開啟瀏覽器控制台 (F12) 查看詳細錯誤訊息和解決步驟\n\n' +
+          '是否繼續嘗試保存到資料庫？'
+        );
+        if (!shouldContinue) {
+          return;
+        }
       }
       
       // 同時保存到 Supabase 資料庫
@@ -326,10 +389,12 @@ WITH CHECK (true);
 
                     <button
                       onClick={handleDelete}
+                      disabled={true}
                       className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg
-                               bg-red-500/20 text-red-300 hover:bg-red-500/30 
-                               border border-red-500/50 hover:border-red-400
-                               transition-all"
+                               bg-gray-700/50 text-gray-500 cursor-not-allowed
+                               border border-gray-700/50
+                               opacity-50"
+                      title="此功能已暫時關閉，避免誤觸刪除存檔"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 

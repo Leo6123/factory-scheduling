@@ -9,15 +9,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase 環境變數未設定，將使用 localStorage 作為備用方案');
 }
 
+// 創建 Supabase 客戶端（支援身份驗證）
 export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    })
   : null;
 
-// 在開發環境中，將 supabase 客戶端暴露到 window 物件，方便調試
-if (typeof window !== 'undefined' && supabase) {
-  (window as any).__SUPABASE_CLIENT__ = supabase;
-  (window as any).__SUPABASE_URL__ = supabaseUrl;
-}
+// 移除開發環境調試代碼（資安考量）
+// 如需調試，請使用瀏覽器開發工具直接訪問 Supabase 客戶端
 
 // 資料庫表格名稱
 export const TABLES = {

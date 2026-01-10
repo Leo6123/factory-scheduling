@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { ScheduleItem, CLEANING_PROCESS_DURATION } from "@/types/schedule";
 import { getProductColor } from "@/utils/productColor";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DraggableTimelineBlockProps {
   item: ScheduleItem;
@@ -28,17 +29,17 @@ export default function DraggableTimelineBlock({
   onMaintenanceHoursChange,
   qcStatus,
 }: DraggableTimelineBlockProps) {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('canEdit');
   const [isEditingHours, setIsEditingHours] = useState(false);
   const [editHours, setEditHours] = useState(item.maintenanceHours?.toString() || "");
   // 根據 Material Number (productName) 的第三個字元判斷顏色
   const blockColor = color || getProductColor(item.productName);
-  // 允許拖曳所有區塊（包括跨日區塊），拖曳時會使用原始項目的 ID
-  const canDrag = true;
   
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: item.id,
     data: { item, startHour, durationHours, isCarryOver },
-    disabled: false, // 允許拖曳所有區塊
+    disabled: !canEdit, // 只有有編輯權限才能拖曳
   });
 
   // 計算位置和寬度 (百分比)
@@ -132,10 +133,10 @@ export default function DraggableTimelineBlock({
   return (
     <div
       ref={setNodeRef}
-      {...(canDrag ? { ...listeners, ...attributes } : {})}
+      {...(canEdit ? { ...listeners, ...attributes } : {})} // 只有有編輯權限才能拖曳
       className={`absolute h-16 rounded flex flex-col justify-center px-2
                  border border-white/20 transition-all overflow-hidden select-none
-                 ${canDrag 
+                 ${canEdit 
                    ? "cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-white/30" 
                    : "cursor-default"}`}
       style={{
@@ -230,8 +231,8 @@ export default function DraggableTimelineBlock({
         </div>
       )}
       
-      {/* 維修時長編輯 */}
-      {item.isMaintenance && isEditingHours ? (
+      {/* 維修時長編輯 - 需有編輯權限 */}
+      {item.isMaintenance && isEditingHours && canEdit ? (
         <div 
           className="flex items-center gap-1"
           onPointerDown={(e) => e.stopPropagation()}
@@ -251,10 +252,10 @@ export default function DraggableTimelineBlock({
         </div>
       ) : item.isMaintenance ? (
         <div 
-          className="text-[10px] text-amber-400 cursor-pointer hover:underline"
-          onClick={handleMaintenanceClick}
+          className={`text-[10px] text-amber-400 ${canEdit ? "cursor-pointer hover:underline" : ""}`}
+          onClick={canEdit ? handleMaintenanceClick : undefined}
           onPointerDown={(e) => e.stopPropagation()}
-          title="點擊編輯時長"
+          title={canEdit ? "點擊編輯時長" : undefined}
         >
           🔧 {item.maintenanceHours} 小時
         </div>
