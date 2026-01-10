@@ -52,10 +52,11 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
       }
       if (!isCompleted) {
         isCompleted = true;
-        setIsLoading(false);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+      }
+      // 無論是否已完成，都重置 loading 狀態
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
       }
     };
 
@@ -104,8 +105,6 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
       // 批次處理本身有每個批次的超時保護（15 秒）
       const success = await onImport(result.schedules);
 
-      isCompleted = true;
-
       if (success) {
         // 顯示匯入結果
         let message = `✅ 成功匯入 ${result.importedCount} 筆建議排程`;
@@ -119,6 +118,9 @@ export default function ImportSuggestedScheduleButton({ onImport }: ImportSugges
         setError("匯入失敗，請檢查控制台錯誤訊息");
         console.error('❌ 匯入失敗，onImport 返回 false');
       }
+      
+      // 標記為已完成
+      isCompleted = true;
     } catch (err) {
       isCompleted = true;
       console.error('❌ 匯入錯誤:', err);
