@@ -134,7 +134,51 @@ async function saveSuggestedSchedulesToDB(schedules: SuggestedSchedule[]): Promi
 
     console.log('📤 開始儲存', dbItems.length, '筆到 Supabase...');
 
-    // 使用 upsert 更新或插入（帶超時保護）
+    // 如果資料量很大（> 500 筆），使用批次處理
+    const BATCH_SIZE = 500;
+    let totalProcessed = 0;
+    let hasError = false;
+
+    if (dbItems.length > BATCH_SIZE) {
+      console.log(`📦 資料量較大 (${dbItems.length} 筆)，使用批次處理 (每批 ${BATCH_SIZE} 筆)`);
+      
+      for (let i = 0; i < dbItems.length; i += BATCH_SIZE) {
+        const batch = dbItems.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(dbItems.length / BATCH_SIZE);
+        
+        console.log(`📦 處理批次 ${batchNum}/${totalBatches} (${batch.length} 筆)...`);
+        
+        try {
+          const { error: batchError } = await supabase
+            .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
+            .upsert(batch, { onConflict: 'material_number' });
+
+          if (batchError) {
+            console.error(`❌ 批次 ${batchNum} 儲存失敗:`, batchError);
+            hasError = true;
+            // 繼續處理其他批次，不完全失敗
+          } else {
+            totalProcessed += batch.length;
+            console.log(`✅ 批次 ${batchNum} 儲存成功 (${batch.length} 筆)`);
+          }
+        } catch (batchErr: any) {
+          console.error(`❌ 批次 ${batchNum} 異常:`, batchErr);
+          hasError = true;
+        }
+      }
+      
+      if (hasError) {
+        console.warn(`⚠️ 部分批次儲存失敗，成功: ${totalProcessed}/${dbItems.length} 筆`);
+        // 即使有部分失敗，因為 localStorage 已保存，所以返回 true
+        return true;
+      }
+      
+      console.log(`✅ 所有批次儲存成功，共 ${totalProcessed} 筆`);
+      return true;
+    }
+
+    // 資料量不大，直接使用 upsert（帶超時保護）
     const upsertPromise = supabase
       .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
       .upsert(dbItems, { onConflict: 'material_number' });
