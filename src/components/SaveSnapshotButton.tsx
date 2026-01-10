@@ -252,7 +252,7 @@ WITH CHECK (true);
     <>
       <button
         onClick={() => setShowConfirm(true)}
-        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap
+        className="w-full h-8 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap
                    bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 
                    border border-blue-500/50 hover:border-blue-400
                    transition-all"

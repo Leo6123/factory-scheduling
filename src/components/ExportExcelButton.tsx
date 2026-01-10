@@ -248,7 +248,7 @@ export default function ExportExcelButton({
       <button
         onClick={() => setIsOpen(true)}
         disabled={scheduledCount === 0}
-        className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 whitespace-nowrap
+        className={`w-full h-8 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap
                     transition-colors
                     ${scheduledCount > 0
                       ? "bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-600/30"
