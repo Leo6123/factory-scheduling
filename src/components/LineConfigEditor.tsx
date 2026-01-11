@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LineConfig } from "@/types/productionLine";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LineConfigEditorProps {
   lineId: string;
@@ -18,6 +19,10 @@ export default function LineConfigEditor({
   config,
   onUpdate,
 }: LineConfigEditorProps) {
+  // 檢查權限：viewer 無法編輯產線出量
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('canEdit');
+  
   // 防護措施：如果 config 為 undefined，使用預設值
   const safeConfig = config || { id: lineId, avgOutput: 100 };
   
@@ -57,26 +62,37 @@ export default function LineConfigEditor({
       
       {/* 平均產量設定 */}
       <div className="flex items-center gap-1 mt-1">
-        {isEditing ? (
-          <input
-            type="number"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={handleKeyDown}
-            autoFocus
-            className="w-14 px-1 py-0.5 text-xs text-center bg-gray-800 border border-gray-600 
-                       rounded text-white focus:outline-none focus:border-blue-500"
-          />
+        {canEdit ? (
+          // 有編輯權限：顯示可編輯的按鈕或輸入框
+          isEditing ? (
+            <input
+              type="number"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onBlur={handleSave}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              className="w-14 px-1 py-0.5 text-xs text-center bg-gray-800 border border-gray-600 
+                         rounded text-white focus:outline-none focus:border-blue-500"
+            />
+          ) : (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="text-xs text-gray-400 hover:text-white transition-colors 
+                         bg-gray-800/50 px-2 py-0.5 rounded hover:bg-gray-700"
+              title="點擊編輯平均產量"
+            >
+              {safeConfig.avgOutput} kg/h
+            </button>
+          )
         ) : (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="text-xs text-gray-400 hover:text-white transition-colors 
-                       bg-gray-800/50 px-2 py-0.5 rounded hover:bg-gray-700"
-            title="點擊編輯平均產量"
+          // 無編輯權限（viewer）：只顯示文字，不可編輯
+          <span
+            className="text-xs text-gray-400 px-2 py-0.5"
+            title="訪客無法編輯產線出量"
           >
             {safeConfig.avgOutput} kg/h
-          </button>
+          </span>
         )}
       </div>
     </div>
