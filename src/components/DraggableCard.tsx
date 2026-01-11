@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { ScheduleItem } from "@/types/schedule";
@@ -25,13 +25,20 @@ interface DraggableCardProps {
 }
 
 export default function DraggableCard({ item, color, onToggleCrystallization, onToggleCCD, onToggleDryblending, onTogglePackage, onToggle2Press, onToggle3Press, onQuantityChange, onMaterialReadyDateChange, onToggleAbnormalIncomplete, qcStatus, suggestedSchedule }: DraggableCardProps) {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canEdit = hasPermission('canEdit');
   const [isEditingQuantity, setIsEditingQuantity] = useState(false);
   const [editQuantity, setEditQuantity] = useState(item.quantity.toString());
   const [isEditingMaterialReadyDate, setIsEditingMaterialReadyDate] = useState(false);
   const [editMaterialReadyDate, setEditMaterialReadyDate] = useState(item.materialReadyDate || '');
   const [isRecipeExpanded, setIsRecipeExpanded] = useState(false);
+
+  // 當 canEdit 變為 false 時（例如角色從 operator 更新為 viewer），強制收合配方列表
+  useEffect(() => {
+    if (!canEdit && isRecipeExpanded) {
+      setIsRecipeExpanded(false);
+    }
+  }, [canEdit, isRecipeExpanded]);
 
   // 根據 Material Number (productName) 的第三個字元判斷顏色
   const cardColor = color || getProductColor(item.productName);

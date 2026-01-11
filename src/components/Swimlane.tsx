@@ -133,9 +133,14 @@ function getBlocksForDate(
 
 export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 權限檢查
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canEdit = hasPermission('canEdit');
   const canView = hasPermission('canView');
+
+  // 調試日誌：確認權限檢查是否正確
+  useEffect(() => {
+    console.log('🔍 [Swimlane] 權限檢查 - canEdit:', canEdit, 'user.role:', user?.role);
+  }, [canEdit, user?.role]);
 
   // 使用資料庫 Hook（自動載入和儲存）
   // 注意：不使用 initialItems（模擬資料），讓 useScheduleData 從資料庫載入
