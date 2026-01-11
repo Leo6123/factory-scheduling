@@ -196,6 +196,16 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {/* 忘記密碼連結 */}
+          <div className="mt-4 text-center">
+            <a
+              href="/forgot-password"
+              className="text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+            >
+              忘記密碼？
+            </a>
+          </div>
+
           {/* 提示訊息 */}
           <div className="mt-6 text-center text-xs text-gray-500">
             <p>首次使用？請聯繫系統管理員建立帳號</p>
