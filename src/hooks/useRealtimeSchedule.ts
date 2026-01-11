@@ -66,7 +66,7 @@ export function useRealtimeSchedule(options: UseRealtimeScheduleOptions = {}) {
               // 保存當前事件
               eventThrottleRef.current.lastEvent = payload;
               
-              // 設置節流：1000ms 內只處理最後一個事件（避免批次操作時觸發大量查詢）
+              // 設置節流：500ms 內只處理最後一個事件（減少延遲，但仍避免批次操作時觸發大量查詢）
               eventThrottleRef.current.timer = setTimeout(async () => {
                 const latestPayload = eventThrottleRef.current.lastEvent;
                 if (!latestPayload) return;
@@ -143,7 +143,7 @@ export function useRealtimeSchedule(options: UseRealtimeScheduleOptions = {}) {
                     onError(err instanceof Error ? err : new Error('處理事件失敗'));
                   }
                 }
-              }, 1000); // 1000ms 節流，避免短時間內多個事件觸發多次查詢
+              }, 500); // 500ms 節流，減少更新延遲，但仍避免批次操作時觸發大量查詢
               
               // 不等待節流計時器，立即返回（避免阻塞）
               return;

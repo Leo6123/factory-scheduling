@@ -38,6 +38,13 @@ let lastLoadTime = 0;
 const REQUEST_THROTTLE_MS = 2000; // 2 秒內只允許一次請求
 const CACHE_DURATION = 30000; // 30 秒快取
 
+// 導出函數：清除快取（用於 Realtime 更新時清除快取）
+export function clearScheduleCache() {
+  cachedItems = null;
+  lastLoadTime = 0;
+  console.log('🗑️ 已清除排程資料快取（Realtime 更新）');
+}
+
 // 從資料庫載入排程項目（優先從資料庫載入，不使用 localStorage）
 async function loadScheduleItemsFromDB(): Promise<ScheduleItem[]> {
   if (!supabase) {

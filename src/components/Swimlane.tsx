@@ -21,7 +21,7 @@ import ScheduleCard from "./ScheduleCard";
 import UnscheduledSidebar from "./UnscheduledSidebar";
 import MonthSelector from "./MonthSelector";
 import BatchSearch from "./BatchSearch";
-import { useScheduleData } from "@/hooks/useScheduleData";
+import { useScheduleData, clearScheduleCache } from "@/hooks/useScheduleData";
 import { useQCStatus } from "@/hooks/useQCStatus";
 import { useSuggestedSchedule } from "@/hooks/useSuggestedSchedule";
 import { useRealtimeSchedule } from "@/hooks/useRealtimeSchedule";
@@ -292,8 +292,17 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       console.log('🔄 [Realtime] 收到即時變更，更新本地狀態，共', items.length, '筆');
       console.log('📝 變更來源：其他分頁/裝置');
       
+      // 清除快取，確保下次載入時使用最新資料（特別是 viewer 用戶）
+      clearScheduleCache();
+      
       // 直接更新本地狀態（不觸發 setScheduleItems，避免循環保存）
       setLocalItems(items);
+      
+      // 同時更新 useScheduleData 的內部狀態（通過 reloadScheduleData）
+      // 但使用 setTimeout 延遲執行，避免與當前更新衝突
+      setTimeout(() => {
+        reloadScheduleData();
+      }, 100);
       
       // 同時更新 useScheduleData 的內部狀態，確保一致性
       // 但不觸發保存（因為資料已經在資料庫中了）
