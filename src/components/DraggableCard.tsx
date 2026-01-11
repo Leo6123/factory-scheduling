@@ -353,7 +353,7 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
         </div>
       )}
       
-      {/* 看配方 - 訪客只能查看（自動展開），有編輯權限可以展開/收合 */}
+      {/* 看配方 - viewer 預設收合，有編輯權限可以展開/收合 */}
       {item.recipeItems && item.recipeItems.length > 0 && (
         <div className="text-xs mb-1">
           {canEdit ? (
@@ -383,8 +383,8 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
             </div>
           )}
           
-          {/* 配方列表 - 有編輯權限時可展開/收合，訪客自動顯示 */}
-          {(canEdit ? isRecipeExpanded : true) && (
+          {/* 配方列表 - 有編輯權限時可展開/收合，viewer 預設收合（不顯示） */}
+          {(canEdit ? isRecipeExpanded : false) && (
             <div className="mt-2 ml-4 space-y-1.5 border-l-2 border-blue-500/30 pl-3">
               {item.recipeItems.map((recipe: RecipeItem, idx: number) => (
                 <div key={idx} className="text-[11px] text-gray-300 bg-gray-800/50 rounded p-1.5">

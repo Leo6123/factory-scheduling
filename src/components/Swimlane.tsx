@@ -26,6 +26,7 @@ import { useQCStatus } from "@/hooks/useQCStatus";
 import { useSuggestedSchedule } from "@/hooks/useSuggestedSchedule";
 import { useRealtimeSchedule } from "@/hooks/useRealtimeSchedule";
 import { supabase, TABLES } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SwimlaneProps {
   initialItems: ScheduleItem[];
@@ -131,6 +132,11 @@ function getBlocksForDate(
 }
 
 export default function Swimlane({ initialItems }: SwimlaneProps) {
+  // 權限檢查
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('canEdit');
+  const canView = hasPermission('canView');
+
   // 使用資料庫 Hook（自動載入和儲存）
   // 注意：不使用 initialItems（模擬資料），讓 useScheduleData 從資料庫載入
   const {
@@ -1249,13 +1255,14 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
 
   return (
     <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
+      sensors={canEdit ? sensors : []}  // viewer 無法拖曳：禁用所有 sensors
+      onDragStart={canEdit ? handleDragStart : undefined}
+      onDragMove={canEdit ? handleDragMove : undefined}
+      onDragEnd={canEdit ? handleDragEnd : undefined}
     >
       <div className="flex h-[calc(100vh-120px)]">
-        {/* 左側：未排程區域 */}
+        {/* 左側：未排程區域 - viewer 完全隱藏 */}
+        {canEdit && (
         <UnscheduledSidebar
           items={unscheduledItems}
           allScheduleItems={scheduleItems}

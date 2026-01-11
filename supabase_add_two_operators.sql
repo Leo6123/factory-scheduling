@@ -1,0 +1,73 @@
+-- ============================================
+-- 新增 2 個排程員（operator）帳號
+-- ============================================
+-- 
+-- 使用說明：
+-- 1. 先在 Supabase Dashboard > Authentication > Users 中建立 2 個用戶帳號
+-- 2. 複製每個用戶的 UUID
+-- 3. 將下方 SQL 中的 UUID 和 email 替換為實際值
+-- 4. 在 SQL Editor 中執行此腳本
+--
+-- ============================================
+
+-- 排程員 1
+-- 步驟 1：在 Supabase Dashboard > Authentication > Users 中建立用戶
+--    - Email: 替換為實際 email（例如：operator1@example.com）
+--    - Password: 設定密碼
+--    - ✅ Auto Confirm User
+-- 步驟 2：複製用戶的 UUID，替換下方的 'YOUR_USER_ID_1'
+-- 步驟 3：替換下方的 'operator1@example.com' 為實際 email
+
+INSERT INTO public.user_profiles (id, email, role)
+VALUES (
+  'YOUR_USER_ID_1',  -- ⚠️ 從 Supabase Dashboard > Authentication > Users 複製的 UUID（排程員 1）
+  'operator1@example.com',  -- ⚠️ 排程員 1 的 email
+  'operator'  -- 設為排程員角色
+)
+ON CONFLICT (id) DO UPDATE SET 
+  email = EXCLUDED.email, 
+  role = EXCLUDED.role, 
+  updated_at = NOW();
+
+-- 排程員 2
+-- 步驟 1：在 Supabase Dashboard > Authentication > Users 中建立用戶
+--    - Email: 替換為實際 email（例如：operator2@example.com）
+--    - Password: 設定密碼
+--    - ✅ Auto Confirm User
+-- 步驟 2：複製用戶的 UUID，替換下方的 'YOUR_USER_ID_2'
+-- 步驟 3：替換下方的 'operator2@example.com' 為實際 email
+
+INSERT INTO public.user_profiles (id, email, role)
+VALUES (
+  'YOUR_USER_ID_2',  -- ⚠️ 從 Supabase Dashboard > Authentication > Users 複製的 UUID（排程員 2）
+  'operator2@example.com',  -- ⚠️ 排程員 2 的 email
+  'operator'  -- 設為排程員角色
+)
+ON CONFLICT (id) DO UPDATE SET 
+  email = EXCLUDED.email, 
+  role = EXCLUDED.role, 
+  updated_at = NOW();
+
+-- ============================================
+-- 驗證是否建立成功
+-- ============================================
+
+-- 查看所有排程員
+SELECT 
+  id, 
+  email, 
+  role, 
+  created_at,
+  updated_at
+FROM public.user_profiles 
+WHERE role = 'operator'
+ORDER BY created_at DESC;
+
+-- 驗證特定排程員（替換 email）
+-- SELECT id, email, role, created_at, updated_at
+-- FROM public.user_profiles 
+-- WHERE email = 'operator1@example.com';  -- ⚠️ 替換為實際 email
+
+-- SELECT id, email, role, created_at, updated_at
+-- FROM public.user_profiles 
+-- WHERE email = 'operator2@example.com';  -- ⚠️ 替換為實際 email
