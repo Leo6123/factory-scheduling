@@ -9,8 +9,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase 環境變數未設定，將使用 localStorage 作為備用方案');
 }
 
-// 自定義存儲：結合 sessionStorage（關閉瀏覽器後清除）和 BroadcastChannel（跨分頁同步）
-// 注意：使用 sessionStorage 後，關閉瀏覽器會自動清除 session，但通過 BroadcastChannel 可以進行跨分頁同步
+// 自定義存儲：使用 sessionStorage（關閉瀏覽器後清除）
+// 注意：不使用 BroadcastChannel 同步 session，讓每個分頁有獨立的 session
+// 這樣不同帳號可以同時登入不同分頁，不會互相干擾
 const createCustomStorage = () => {
   if (typeof window === 'undefined') {
     // 服務端渲染時返回空對象
@@ -21,40 +22,10 @@ const createCustomStorage = () => {
     };
   }
 
-  const TAB_ID = `tab_${Date.now()}_${Math.random()}`;
-  const BROADCAST_CHANNEL_NAME = 'supabase-session-sync';
-  
-  // 使用 BroadcastChannel 進行跨分頁同步
-  let broadcastChannel: BroadcastChannel | null = null;
-  try {
-    broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-  } catch (e) {
-    console.warn('⚠️ BroadcastChannel 不可用，將使用 sessionStorage（不支援跨分頁同步）:', e);
-  }
-
-  // 監聽其他分頁的消息（同步 session）
-  if (broadcastChannel) {
-    broadcastChannel.onmessage = (event) => {
-      if (event.data.type === 'SESSION_UPDATE' && event.data.tabId !== TAB_ID) {
-        // 如果有其他分頁更新了 session，同步到當前分頁
-        const { key, value } = event.data;
-        if (value !== null && value !== undefined) {
-          sessionStorage.setItem(key, value);
-        } else {
-          sessionStorage.removeItem(key);
-        }
-      }
-    };
-
-    // 當分頁關閉時，通知其他分頁（可選，用於清理）
-    const handleBeforeUnload = () => {
-      if (broadcastChannel) {
-        broadcastChannel.postMessage({ type: 'TAB_CLOSING', tabId: TAB_ID });
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('pagehide', handleBeforeUnload);
-  }
+  // 注意：不使用 BroadcastChannel 同步 session
+  // 每個分頁應該有獨立的 session，這樣不同帳號可以同時登入不同分頁
+  // sessionStorage 在每個分頁中是獨立的（雖然技術上可以在同一瀏覽器會話中共享）
+  // 但 Supabase 的實現應該讓每個分頁有獨立的 session
 
   return {
     getItem: (key: string): string | null => {
@@ -64,31 +35,13 @@ const createCustomStorage = () => {
     },
     setItem: (key: string, value: string): void => {
       // 保存到 sessionStorage（關閉瀏覽器後會自動清除）
+      // 注意：不跨分頁同步，讓每個分頁有獨立的 session
       sessionStorage.setItem(key, value);
-      
-      // 通知其他分頁 session 已更新（跨分頁同步）
-      if (broadcastChannel) {
-        broadcastChannel.postMessage({ 
-          type: 'SESSION_UPDATE', 
-          key, 
-          value, 
-          tabId: TAB_ID 
-        });
-      }
     },
     removeItem: (key: string): void => {
       // 從 sessionStorage 移除
+      // 注意：不跨分頁同步，讓每個分頁有獨立的 session
       sessionStorage.removeItem(key);
-      
-      // 通知其他分頁 session 已清除（跨分頁同步）
-      if (broadcastChannel) {
-        broadcastChannel.postMessage({ 
-          type: 'SESSION_UPDATE', 
-          key, 
-          value: null, 
-          tabId: TAB_ID 
-        });
-      }
     },
   };
 };
@@ -100,7 +53,7 @@ export const supabase = supabaseUrl && supabaseAnonKey
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
-        storage: createCustomStorage(), // 使用自定義存儲（sessionStorage + BroadcastChannel）
+        storage: createCustomStorage(), // 使用自定義存儲（sessionStorage，不跨分頁同步）
       }
     })
   : null;
