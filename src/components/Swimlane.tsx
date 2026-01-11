@@ -1298,6 +1298,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           onImportSuggestedSchedule={importSchedules}
           onRefreshData={reloadScheduleData}
         />
+        )}
 
         {/* 右側：產線區域 */}
         <div className="flex-1 flex flex-col overflow-hidden">
