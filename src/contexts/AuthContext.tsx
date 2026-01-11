@@ -310,8 +310,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event.data?.type === 'FORCE_LOGOUT') {
           const targetEmail = event.data.email;
           if (user?.email === targetEmail) {
+            // 檢查是否是當前分頁發送的消息（不應該登出發送消息的分頁）
+            const senderTimestamp = sessionStorage.getItem('force_logout_sender');
+            if (senderTimestamp) {
+              const timestamp = parseInt(senderTimestamp, 10);
+              const now = Date.now();
+              // 如果標記在 2 秒內（消息剛發送），則忽略（這是發送消息的分頁）
+              if (now - timestamp < 2000) {
+                console.log('ℹ️ 收到自己發送的 FORCE_LOGOUT 消息，忽略（不登出當前分頁）');
+                return;
+              }
+            }
+            
             console.log('🔄 收到強制登出消息，登出當前分頁');
-            // 強制登出當前分頁
+            // 強制登出當前分頁（這是其他分頁發送的消息）
             if (supabase) {
               supabase.auth.signOut().then(() => {
                 setUser(null);

@@ -179,11 +179,20 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   const handleConfirmLogout = async () => {
     setShowConfirmDialog(false);
-    // 通知其他分頁登出
+    // 設置標記，表示當前分頁正在發送 FORCE_LOGOUT 消息（不應該登出當前分頁）
     if (typeof window !== 'undefined') {
+      // 使用 sessionStorage 設置標記，有效期 1 秒（足夠消息傳播）
+      sessionStorage.setItem('force_logout_sender', Date.now().toString());
+      
+      // 通知其他分頁登出
       const channel = new BroadcastChannel('auth_logout');
       channel.postMessage({ type: 'FORCE_LOGOUT', email: user?.email });
-      channel.close();
+      
+      // 短暫延遲後清除標記
+      setTimeout(() => {
+        sessionStorage.removeItem('force_logout_sender');
+        channel.close();
+      }, 1000);
     }
     // 不登出當前分頁，繼續使用（這是用戶選擇「確認（關閉其他分頁）」的意思）
     console.log('✅ 用戶選擇關閉其他分頁，當前分頁繼續使用');
