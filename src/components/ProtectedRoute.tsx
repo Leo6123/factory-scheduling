@@ -35,9 +35,16 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
     // 監聽其他分頁的消息
     const messageHandler = (event: MessageEvent) => {
-      console.log('📡 [ProtectedRoute] 收到消息:', event.data);
+      // 首先檢查消息中的 email 是否與當前用戶的 email 相同
+      // 如果不同，直接忽略（不同帳號的消息不應該觸發多分頁檢測）
+      if (!event.data.email || event.data.email !== user?.email) {
+        // 忽略不同帳號的消息（不同帳號應該可以同時登入）
+        return;
+      }
       
-      // 收到其他分頁的「我還活著」消息
+      console.log('📡 [ProtectedRoute] 收到同帳號消息:', event.data, '當前用戶:', user.email);
+      
+      // 收到其他分頁的「我還活著」消息（只處理相同 email 的消息）
       if (event.data.type === 'TAB_ALIVE' && event.data.email === user.email) {
         if (event.data.tabId && event.data.tabId !== tabId) {
           // 更新該分頁的最後活動時間
@@ -47,7 +54,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
             respondedTabs.add(event.data.tabId);
             if (!hasOtherTab && !showConfirmDialog) {
               hasOtherTab = true;
-              console.log('⚠️ [ProtectedRoute] 檢測到其他分頁正在使用此帳號，tabId:', event.data.tabId);
+              console.log('⚠️ [ProtectedRoute] 檢測到其他分頁正在使用此帳號，tabId:', event.data.tabId, 'email:', user.email);
               setShowConfirmDialog(true);
               setHasCheckedMultipleTabs(true);
               // 清除 timeout（如果存在）
@@ -61,13 +68,13 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
       } 
       // 收到檢測請求，回應說明這個分頁存在（這是關鍵！讓舊分頁能回應新分頁）
       else if (event.data.type === 'TAB_DETECTION_REQUEST' && event.data.email === user.email) {
-        console.log('📤 [ProtectedRoute] 回應檢測請求，說明此分頁存在，tabId:', tabId);
+        console.log('📤 [ProtectedRoute] 回應檢測請求，說明此分頁存在，tabId:', tabId, 'email:', user.email);
         channel.postMessage({ type: 'TAB_ALIVE', tabId, email: user.email, timestamp: Date.now() });
       }
-      // 收到分頁關閉通知
+      // 收到分頁關閉通知（只處理相同 email 的消息）
       else if (event.data.type === 'TAB_CLOSING' && event.data.email === user.email) {
         if (event.data.tabId && event.data.tabId !== tabId) {
-          console.log('📴 [ProtectedRoute] 收到其他分頁關閉通知，tabId:', event.data.tabId);
+          console.log('📴 [ProtectedRoute] 收到其他分頁關閉通知，tabId:', event.data.tabId, 'email:', user.email);
           activeTabs.delete(event.data.tabId);
           respondedTabs.delete(event.data.tabId);
           
