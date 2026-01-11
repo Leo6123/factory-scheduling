@@ -71,6 +71,12 @@ export function useRealtimeSchedule(options: UseRealtimeScheduleOptions = {}) {
                 const latestPayload = eventThrottleRef.current.lastEvent;
                 if (!latestPayload) return;
                 
+                // 檢查 supabase 是否可用
+                if (!supabase) {
+                  console.warn('⚠️ Supabase 未初始化，跳過即時同步');
+                  return;
+                }
+                
                 try {
                   // 優化：只查詢需要的欄位，減少數據傳輸量
                   const selectFields = 'id, product_name, batch_number, quantity, line_id, schedule_date, start_hour, end_hour, created_at, updated_at, material_ready_date, recipe_items';
@@ -104,6 +110,10 @@ export function useRealtimeSchedule(options: UseRealtimeScheduleOptions = {}) {
                     }
                   } else {
                     // 其他事件類型：重新載入所有資料
+                    if (!supabase) {
+                      console.warn('⚠️ Supabase 未初始化，跳過即時同步');
+                      return;
+                    }
                     console.log('⚠️ [Realtime] 未知事件類型，重新載入所有資料');
                     const { data, error } = await supabase
                       .from(TABLES.SCHEDULE_ITEMS)
