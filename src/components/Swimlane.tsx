@@ -271,9 +271,10 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   
   // Google Sheets QC 狀態連動
   // 從環境變數取得 Google Sheet ID，或使用預設值
+  // 注意：API Key 現在在伺服器端的 API Route 中，不再暴露在客戶端
   const googleSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || '';
-  const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
-  const { getBatchQCStatus, qcData, isLoading: isQCLoading, error: qcError } = useQCStatus(scheduleItems, googleSheetId, googleApiKey);
+  // googleApiKey 參數已移除，不再從客戶端傳遞（API Route 會從伺服器端環境變數獲取）
+  const { getBatchQCStatus, qcData, isLoading: isQCLoading, error: qcError } = useQCStatus(scheduleItems, googleSheetId);
   
   // 建議排程
   const { getSuggestedSchedule, importSchedules } = useSuggestedSchedule();

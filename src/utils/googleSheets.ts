@@ -6,10 +6,10 @@ export interface QCData {
 }
 
 // 從 Google Sheets 讀取 QC 資料
-// 使用 Google Sheets API v4 的公開讀取方式
+// 現在使用 Next.js API Route（伺服器端），不再需要 API Key
 export async function fetchQCDataFromGoogleSheets(
   spreadsheetId: string,
-  apiKey?: string
+  apiKey?: string  // 保留參數以向後兼容，但不再使用
 ): Promise<QCData[]> {
   try {
     // 讀取 C 欄（開始產品批號）和 E 欄（結束產品批號）
@@ -19,16 +19,12 @@ export async function fetchQCDataFromGoogleSheets(
 
     for (const sheetName of sheetNames) {
       try {
-        // 讀取 D、E、H 欄（從第 2 行開始，不限制結束行數）
-        // D 欄：開始產品批號
-        // E 欄：結束產品批號或狀態
-        // H 欄：QC結果（PASS/NG）
-        const url = apiKey
-          ? `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!D2:H?key=${apiKey}`
-          : `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!D2:H`;
-
-        const response = await fetch(url);
+        // 使用 Next.js API Route（伺服器端）
+        // API Key 不再暴露在客戶端
+        const apiUrl = `/api/google-sheets?spreadsheetId=${encodeURIComponent(spreadsheetId)}&sheetName=${encodeURIComponent(sheetName)}&range=D2:H`;
         
+        const response = await fetch(apiUrl);
+
         if (!response.ok) {
           lastError = new Error(`無法讀取 Google Sheets: ${response.statusText}`);
           continue; // 嘗試下一個工作表名稱
@@ -39,7 +35,7 @@ export async function fetchQCDataFromGoogleSheets(
 
         // 轉換為 QCData 格式
         // D 欄（索引 0）：開始產品批號
-        // E 欄（索引 1）：結束產品批號（如果完成）或 "進行中"（如果還在進行）
+        // E 欄（索引 1）：結束產品批號或狀態
         // H 欄（索引 4）：QC結果（PASS/NG）
         const qcDataList: QCData[] = rows
           .filter((row: any[]) => row && row.length >= 1 && row[0]) // 過濾空行
@@ -89,173 +85,172 @@ export async function fetchQCDataFromGoogleSheets(
     }
 
     // 如果所有工作表名稱都失敗，嘗試使用 CSV 格式（公開 Sheet）
-    if (!apiKey) {
-      try {
-        // 嘗試多個工作表名稱的 CSV 格式
-        const csvSheetNames = ['Report', 'report', 'QC完整表單', 'Sheet1'];
-        for (const csvSheetName of csvSheetNames) {
-          try {
-                // 讀取 D、E、H 欄（從第 2 行開始，不限制結束行數）
-                // D 欄：開始產品批號
-                // E 欄：結束產品批號或狀態
-                // H 欄：QC結果（PASS/NG）
-                const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(csvSheetName)}&range=D2:H`;
-            const csvResponse = await fetch(csvUrl);
-            if (csvResponse.ok) {
-              const csvText = await csvResponse.text();
-              const lines = csvText.split('\n').filter(line => line.trim());
-              const qcDataList: QCData[] = [];
+    // 注意：CSV 格式不需要 API Key，所以可以繼續使用
+    try {
+      // 嘗試多個工作表名稱的 CSV 格式
+      const csvSheetNames = ['Report', 'report', 'QC完整表單', 'Sheet1'];
+      for (const csvSheetName of csvSheetNames) {
+        try {
+          // 讀取 D、E、H 欄（從第 2 行開始，不限制結束行數）
+          // D 欄：開始產品批號
+          // E 欄：結束產品批號或狀態
+          // H 欄：QC結果（PASS/NG）
+          const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(csvSheetName)}&range=D2:H`;
+          const csvResponse = await fetch(csvUrl);
+          if (csvResponse.ok) {
+            const csvText = await csvResponse.text();
+            const lines = csvText.split('\n').filter(line => line.trim());
+            const qcDataList: QCData[] = [];
+            
+            console.log(`🔍 嘗試從工作表 "${csvSheetName}" 讀取 CSV，共 ${lines.length} 行`);
+            
+            // 顯示前 3 行原始資料（除錯用）
+            if (lines.length > 0) {
+              console.log(`📋 CSV 原始資料前 3 行:`, lines.slice(0, 3));
+            }
+            
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              // CSV 格式：正確解析包含引號的欄位
+              // 使用更強健的 CSV 解析方式
+              const columns: string[] = [];
+              let current = '';
+              let inQuotes = false;
               
-              console.log(`🔍 嘗試從工作表 "${csvSheetName}" 讀取 CSV，共 ${lines.length} 行`);
-              
-              // 顯示前 3 行原始資料（除錯用）
-              if (lines.length > 0) {
-                console.log(`📋 CSV 原始資料前 3 行:`, lines.slice(0, 3));
-              }
-              
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                // CSV 格式：正確解析包含引號的欄位
-                // 使用更強健的 CSV 解析方式
-                const columns: string[] = [];
-                let current = '';
-                let inQuotes = false;
-                
-                for (let j = 0; j < line.length; j++) {
-                  const char = line[j];
-                  if (char === '"') {
-                    inQuotes = !inQuotes;
-                  } else if (char === ',' && !inQuotes) {
-                    columns.push(current.trim());
-                    current = '';
-                  } else {
-                    current += char;
-                  }
-                }
-                columns.push(current.trim()); // 最後一欄
-                
-                // 移除欄位值中的引號（處理多層引號）
-                const cleanColumns = columns.map(col => {
-                  let cleaned = col.replace(/^"|"$/g, '').trim();
-                  // 處理可能的雙引號轉義
-                  cleaned = cleaned.replace(/""/g, '"');
-                  return cleaned;
-                });
-                
-                // CSV 格式：讀取 D2:H 範圍，則：
-                // columns[0] = D 欄（開始產品批號）
-                // columns[1] = E 欄（結束產品批號或狀態）
-                // columns[4] = H 欄（QC結果：PASS/NG）
-                
-                let startBatch = '';
-                let endBatch = '';
-                let qcResult = '';
-                
-                if (cleanColumns.length >= 5) {
-                  // 讀取 D2:H 範圍，D 欄是索引 0，E 欄是索引 1，H 欄是索引 4
-                  startBatch = cleanColumns[0] || '';
-                  endBatch = cleanColumns[1] || '';
-                  qcResult = (cleanColumns[4] || '').trim().toUpperCase();
-                } else if (cleanColumns.length >= 2) {
-                  // 如果只有 2 欄，可能是舊格式，只讀取 D 和 E 欄
-                  startBatch = cleanColumns[0] || '';
-                  endBatch = cleanColumns[1] || '';
-                }
-                
-                // 除錯：顯示前 3 行的解析結果，以及包含 140878 的行
-                if (i < 3 || (line.includes('140878') && i < 20)) {
-                  console.log(`📋 第 ${i + 1} 行解析: 原始="${line}", 解析後=`, cleanColumns, `D欄="${startBatch}", E欄="${endBatch}"`);
-                }
-                
-                if (startBatch) {
-                  // 處理 E 欄：如果是 "進行中" 或 "未完成"，則表示還沒完成
-                  // 如果是批號，則表示已完成
-                  let cleanEndBatch = '';
-                  if (endBatch && 
-                      endBatch !== '進行中' && 
-                      !endBatch.toLowerCase().includes('未完成') &&
-                      endBatch.length >= 3) {
-                    cleanEndBatch = endBatch.replace(/\s*\(NG\)\s*/gi, '').trim();
-                  }
-                  
-                  // 跳過標題行和無效資料
-                  const isValidStartBatch = !startBatch.toLowerCase().includes('產品批號') &&
-                      !startBatch.toLowerCase().includes('批號') &&
-                      startBatch !== '進行中' &&
-                      startBatch.length >= 3; // 批號至少 3 個字元
-                  
-                  if (isValidStartBatch) {
-                    qcDataList.push({
-                      startBatchNumber: startBatch.trim(),
-                      endBatchNumber: cleanEndBatch, // 如果 E 欄是 "進行中"，則為空字串
-                      qcResult: qcResult || undefined, // QC結果（PASS/NG）
-                    });
-                  } else {
-                    // 除錯：顯示被過濾掉的資料（只顯示前 5 筆）
-                    if (i < 5 && startBatch.length > 0) {
-                      console.log(`⚠️ 第 ${i + 1} 行被過濾: startBatch="${startBatch}", endBatch="${endBatch}"`);
-                    }
-                  }
-                }
-              }
-              
-              if (qcDataList.length > 0) {
-                console.log(`✅ 成功從 CSV 格式讀取 ${qcDataList.length} 筆 QC 資料 (工作表: ${csvSheetName})`);
-                console.log(`📋 CSV 解析: 成功解析 ${qcDataList.length} 筆，前 5 筆:`, qcDataList.slice(0, 5));
-                
-                // 檢查是否有 TWCC140878（除錯用）
-                const testBatch = qcDataList.find(qc => 
-                  (qc.startBatchNumber && qc.startBatchNumber.toUpperCase() === 'TWCC140878') || 
-                  (qc.endBatchNumber && qc.endBatchNumber.toUpperCase() === 'TWCC140878')
-                );
-                if (testBatch) {
-                  console.log(`✅ 找到測試批號 TWCC140878:`, testBatch);
+              for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                if (char === '"') {
+                  inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                  columns.push(current.trim());
+                  current = '';
                 } else {
-                  // 檢查是否有包含 140878 的批號
-                  const similarBatches = qcDataList.filter(qc => 
-                    (qc.startBatchNumber && qc.startBatchNumber.includes('140878')) ||
-                    (qc.endBatchNumber && qc.endBatchNumber.includes('140878'))
+                  current += char;
+                }
+              }
+              columns.push(current.trim()); // 最後一欄
+              
+              // 移除欄位值中的引號（處理多層引號）
+              const cleanColumns = columns.map(col => {
+                let cleaned = col.replace(/^"|"$/g, '').trim();
+                // 處理可能的雙引號轉義
+                cleaned = cleaned.replace(/""/g, '"');
+                return cleaned;
+              });
+              
+              // CSV 格式：讀取 D2:H 範圍，則：
+              // columns[0] = D 欄（開始產品批號）
+              // columns[1] = E 欄（結束產品批號或狀態）
+              // columns[4] = H 欄（QC結果：PASS/NG）
+              
+              let startBatch = '';
+              let endBatch = '';
+              let qcResult = '';
+              
+              if (cleanColumns.length >= 5) {
+                // 讀取 D2:H 範圍，D 欄是索引 0，E 欄是索引 1，H 欄是索引 4
+                startBatch = cleanColumns[0] || '';
+                endBatch = cleanColumns[1] || '';
+                qcResult = (cleanColumns[4] || '').trim().toUpperCase();
+              } else if (cleanColumns.length >= 2) {
+                // 如果只有 2 欄，可能是舊格式，只讀取 D 和 E 欄
+                startBatch = cleanColumns[0] || '';
+                endBatch = cleanColumns[1] || '';
+              }
+              
+              // 除錯：顯示前 3 行的解析結果，以及包含 140878 的行
+              if (i < 3 || (line.includes('140878') && i < 20)) {
+                console.log(`📋 第 ${i + 1} 行解析: 原始="${line}", 解析後=`, cleanColumns, `D欄="${startBatch}", E欄="${endBatch}"`);
+              }
+              
+              if (startBatch) {
+                // 處理 E 欄：如果是 "進行中" 或 "未完成"，則表示還沒完成
+                // 如果是批號，則表示已完成
+                let cleanEndBatch = '';
+                if (endBatch && 
+                    endBatch !== '進行中' && 
+                    !endBatch.toLowerCase().includes('未完成') &&
+                    endBatch.length >= 3) {
+                  cleanEndBatch = endBatch.replace(/\s*\(NG\)\s*/gi, '').trim();
+                }
+                
+                // 跳過標題行和無效資料
+                const isValidStartBatch = !startBatch.toLowerCase().includes('產品批號') &&
+                    !startBatch.toLowerCase().includes('批號') &&
+                    startBatch !== '進行中' &&
+                    startBatch.length >= 3; // 批號至少 3 個字元
+                
+                if (isValidStartBatch) {
+                  qcDataList.push({
+                    startBatchNumber: startBatch.trim(),
+                    endBatchNumber: cleanEndBatch, // 如果 E 欄是 "進行中"，則為空字串
+                    qcResult: qcResult || undefined, // QC結果（PASS/NG）
+                  });
+                } else {
+                  // 除錯：顯示被過濾掉的資料（只顯示前 5 筆）
+                  if (i < 5 && startBatch.length > 0) {
+                    console.log(`⚠️ 第 ${i + 1} 行被過濾: startBatch="${startBatch}", endBatch="${endBatch}"`);
+                  }
+                }
+              }
+            }
+            
+            if (qcDataList.length > 0) {
+              console.log(`✅ 成功從 CSV 格式讀取 ${qcDataList.length} 筆 QC 資料 (工作表: ${csvSheetName})`);
+              console.log(`📋 CSV 解析: 成功解析 ${qcDataList.length} 筆，前 5 筆:`, qcDataList.slice(0, 5));
+              
+              // 檢查是否有 TWCC140878（除錯用）
+              const testBatch = qcDataList.find(qc => 
+                (qc.startBatchNumber && qc.startBatchNumber.toUpperCase() === 'TWCC140878') || 
+                (qc.endBatchNumber && qc.endBatchNumber.toUpperCase() === 'TWCC140878')
+              );
+              if (testBatch) {
+                console.log(`✅ 找到測試批號 TWCC140878:`, testBatch);
+              } else {
+                // 檢查是否有包含 140878 的批號
+                const similarBatches = qcDataList.filter(qc => 
+                  (qc.startBatchNumber && qc.startBatchNumber.includes('140878')) ||
+                  (qc.endBatchNumber && qc.endBatchNumber.includes('140878'))
+                );
+                if (similarBatches.length > 0) {
+                  console.log(`🔍 找到類似批號（包含 140878）:`, similarBatches.slice(0, 3));
+                } else {
+                  // 搜尋所有包含 1408 的批號（可能格式略有不同）
+                  const all1408Batches = qcDataList.filter(qc => 
+                    (qc.startBatchNumber && qc.startBatchNumber.includes('1408')) ||
+                    (qc.endBatchNumber && qc.endBatchNumber.includes('1408'))
                   );
-                  if (similarBatches.length > 0) {
-                    console.log(`🔍 找到類似批號（包含 140878）:`, similarBatches.slice(0, 3));
-                  } else {
-                    // 搜尋所有包含 1408 的批號（可能格式略有不同）
-                    const all1408Batches = qcDataList.filter(qc => 
-                      (qc.startBatchNumber && qc.startBatchNumber.includes('1408')) ||
-                      (qc.endBatchNumber && qc.endBatchNumber.includes('1408'))
-                    );
-                    console.log(`⚠️ 未找到測試批號 TWCC140878`);
-                    console.log(`📊 統計: 總共 ${qcDataList.length} 筆，包含 1408 的批號: ${all1408Batches.length} 筆`);
-                    if (all1408Batches.length > 0) {
-                      console.log(`🔍 包含 1408 的批號範例:`, all1408Batches.slice(0, 5).map(qc => ({
-                        start: qc.startBatchNumber,
-                        end: qc.endBatchNumber || '(空)'
-                      })));
-                    }
-                    console.log(`📋 檢查前 10 筆:`, qcDataList.slice(0, 10).map(qc => ({
-                      start: qc.startBatchNumber || '(空)',
+                  console.log(`⚠️ 未找到測試批號 TWCC140878`);
+                  console.log(`📊 統計: 總共 ${qcDataList.length} 筆，包含 1408 的批號: ${all1408Batches.length} 筆`);
+                  if (all1408Batches.length > 0) {
+                    console.log(`🔍 包含 1408 的批號範例:`, all1408Batches.slice(0, 5).map(qc => ({
+                      start: qc.startBatchNumber,
                       end: qc.endBatchNumber || '(空)'
                     })));
                   }
+                  console.log(`📋 檢查前 10 筆:`, qcDataList.slice(0, 10).map(qc => ({
+                    start: qc.startBatchNumber || '(空)',
+                    end: qc.endBatchNumber || '(空)'
+                  })));
                 }
-                
-                return qcDataList;
-              } else {
-                console.log(`⚠️ 工作表 "${csvSheetName}" 沒有找到有效的 QC 資料`);
               }
+              
+              return qcDataList;
+            } else {
+              console.log(`⚠️ 工作表 "${csvSheetName}" 沒有找到有效的 QC 資料`);
             }
-          } catch (csvErr) {
-            // 繼續嘗試下一個工作表名稱
-            continue;
           }
+        } catch (csvErr) {
+          // 繼續嘗試下一個工作表名稱
+          continue;
         }
-      } catch (csvErr) {
-        console.warn('CSV 格式讀取失敗:', csvErr);
       }
+    } catch (csvErr) {
+      console.warn('CSV 格式讀取失敗:', csvErr);
     }
 
     // 所有方法都失敗
-    throw lastError || new Error('無法讀取 Google Sheets，請確認 Sheet 是否公開或提供 API Key');
+    throw lastError || new Error('無法讀取 Google Sheets，請確認 Sheet 是否公開或提供有效的 spreadsheetId');
   } catch (error) {
     console.error('讀取 Google Sheets QC 資料失敗:', error);
     return [];
@@ -469,4 +464,3 @@ export function getQCStatusLegacy(
 
   return null;
 }
-

@@ -14,7 +14,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 分鐘快取
 export function useQCStatus(
   scheduleItems: ScheduleItem[],
   googleSheetId?: string,
-  googleApiKey?: string
+  googleApiKey?: string  // 保留參數以向後兼容，但不再使用（API Key 現在在伺服器端）
 ) {
   const [qcData, setQcData] = useState<QCData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,7 +55,8 @@ export function useQCStatus(
 
     try {
       console.log('🔄 開始載入 QC 資料，Sheet ID:', googleSheetId);
-      const data = await fetchQCDataFromGoogleSheets(googleSheetId, googleApiKey);
+      // googleApiKey 參數已不再使用（API Key 現在在伺服器端的 API Route 中）
+      const data = await fetchQCDataFromGoogleSheets(googleSheetId);
       qcDataCache = data;
       qcDataCacheTime = now;
       
@@ -85,7 +86,7 @@ export function useQCStatus(
     } finally {
       setIsLoading(false);
     }
-  }, [googleSheetId, googleApiKey]);
+  }, [googleSheetId]);  // 移除 googleApiKey 依賴（不再使用）
 
   // 取得特定批號的 QC 狀態（使用索引，O(1) 時間）
   const getBatchQCStatus = useCallback(

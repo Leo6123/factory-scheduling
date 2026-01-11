@@ -23,9 +23,10 @@ export default function BatchSearch({ scheduleItems }: BatchSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 獲取 QC 狀態
+  // 注意：API Key 現在在伺服器端的 API Route 中，不再暴露在客戶端
   const googleSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || '';
-  const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
-  const { getBatchQCStatus } = useQCStatus(scheduleItems, googleSheetId, googleApiKey);
+  // googleApiKey 參數已移除，不再從客戶端傳遞（API Route 會從伺服器端環境變數獲取）
+  const { getBatchQCStatus } = useQCStatus(scheduleItems, googleSheetId);
 
   // 開啟時自動 focus
   useEffect(() => {

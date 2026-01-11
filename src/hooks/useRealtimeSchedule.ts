@@ -24,6 +24,8 @@ export function useRealtimeSchedule(options: UseRealtimeScheduleOptions = {}) {
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  // 事件節流：避免短時間內多個事件觸發多次查詢
+  const eventThrottleRef = useRef<{ timer: NodeJS.Timeout | null; lastEvent: any }>({ timer: null, lastEvent: null });
 
   // 訂閱即時變更
   const subscribe = useCallback(() => {
@@ -53,28 +55,88 @@ export function useRealtimeSchedule(options: UseRealtimeScheduleOptions = {}) {
                 return;
               }
 
-              // 重新載入所有排程項目
-              const { data, error } = await supabase
-                .from(TABLES.SCHEDULE_ITEMS)
-                .select('*')
-                .order('created_at', { ascending: true });
-
-              if (error) {
-                console.error('❌ 載入變更後的資料失敗:', error);
-                if (onError) {
-                  onError(new Error(`載入資料失敗: ${error.message}`));
-                }
-                return;
+              // 優化：使用事件節流，避免短時間內多個事件觸發多次查詢
+              // 這可以大幅減少 Egress 使用量（特別是批次操作時）
+              
+              // 清除之前的計時器
+              if (eventThrottleRef.current.timer) {
+                clearTimeout(eventThrottleRef.current.timer);
               }
-
-              if (data && Array.isArray(data)) {
-                const items = data.map(dbToScheduleItem);
-                console.log('✅ 已更新排程資料，共', items.length, '筆');
+              
+              // 保存當前事件
+              eventThrottleRef.current.lastEvent = payload;
+              
+              // 設置節流：1000ms 內只處理最後一個事件（避免批次操作時觸發大量查詢）
+              eventThrottleRef.current.timer = setTimeout(async () => {
+                const latestPayload = eventThrottleRef.current.lastEvent;
+                if (!latestPayload) return;
                 
-                if (onScheduleChange) {
-                  onScheduleChange(items);
+                try {
+                  // 優化：只查詢需要的欄位，減少數據傳輸量
+                  const selectFields = 'id, product_name, batch_number, quantity, line_id, schedule_date, start_hour, end_hour, created_at, updated_at, material_ready_date, recipe_items';
+                  
+                  if (latestPayload.eventType === 'INSERT' || latestPayload.eventType === 'UPDATE' || latestPayload.eventType === 'DELETE') {
+                    // 對於所有變更事件，統一重新載入所有資料（但添加節流和優化查詢欄位）
+                    // 注意：雖然可以進一步優化為增量更新，但為了保持向後兼容和簡化邏輯，暫時使用全量載入
+                    // 節流機制已經大幅減少了查詢次數（批次操作時只查詢一次）
+                    console.log(`📡 [Realtime] 處理 ${latestPayload.eventType} 事件（節流後）`);
+                    
+                    const { data, error } = await supabase
+                      .from(TABLES.SCHEDULE_ITEMS)
+                      .select(selectFields)
+                      .order('created_at', { ascending: true });
+
+                    if (error) {
+                      console.error('❌ 載入變更後的資料失敗:', error);
+                      if (onError) {
+                        onError(new Error(`載入資料失敗: ${error.message}`));
+                      }
+                      return;
+                    }
+
+                    if (data && Array.isArray(data)) {
+                      const items = data.map(dbToScheduleItem);
+                      console.log(`✅ [Realtime] 已更新排程資料，共 ${items.length} 筆（節流優化後）`);
+                      
+                      if (onScheduleChange) {
+                        onScheduleChange(items);
+                      }
+                    }
+                  } else {
+                    // 其他事件類型：重新載入所有資料
+                    console.log('⚠️ [Realtime] 未知事件類型，重新載入所有資料');
+                    const { data, error } = await supabase
+                      .from(TABLES.SCHEDULE_ITEMS)
+                      .select(selectFields)
+                      .order('created_at', { ascending: true });
+
+                    if (error) {
+                      console.error('❌ 載入變更後的資料失敗:', error);
+                      if (onError) {
+                        onError(new Error(`載入資料失敗: ${error.message}`));
+                      }
+                      return;
+                    }
+
+                    if (data && Array.isArray(data)) {
+                      const items = data.map(dbToScheduleItem);
+                      console.log('✅ [Realtime] 已更新排程資料，共', items.length, '筆');
+                      
+                      if (onScheduleChange) {
+                        onScheduleChange(items);
+                      }
+                    }
+                  }
+                } catch (err) {
+                  console.error('❌ [Realtime] 處理事件異常:', err);
+                  if (onError) {
+                    onError(err instanceof Error ? err : new Error('處理事件失敗'));
+                  }
                 }
-              }
+              }, 1000); // 1000ms 節流，避免短時間內多個事件觸發多次查詢
+              
+              // 不等待節流計時器，立即返回（避免阻塞）
+              return;
             } catch (err) {
               console.error('❌ 處理即時變更異常:', err);
               if (onError) {

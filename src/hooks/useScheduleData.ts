@@ -30,6 +30,14 @@ function saveToLocalStorage(items: ScheduleItem[]): void {
   }
 }
 
+// 請求節流和去重機制
+let lastRequestTime = 0;
+let loadingPromise: Promise<ScheduleItem[]> | null = null;
+let cachedItems: ScheduleItem[] | null = null;
+let lastLoadTime = 0;
+const REQUEST_THROTTLE_MS = 2000; // 2 秒內只允許一次請求
+const CACHE_DURATION = 30000; // 30 秒快取
+
 // 從資料庫載入排程項目（優先從資料庫載入，不使用 localStorage）
 async function loadScheduleItemsFromDB(): Promise<ScheduleItem[]> {
   if (!supabase) {
@@ -37,39 +45,84 @@ async function loadScheduleItemsFromDB(): Promise<ScheduleItem[]> {
     return [];
   }
 
-  try {
-    console.log('📥 開始從資料庫載入排程項目...');
-    
-    const { data, error } = await supabase
-      .from(TABLES.SCHEDULE_ITEMS)
-      .select('*')
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('❌ 載入排程項目失敗:', error);
-      // 不再回退到 localStorage，直接返回空陣列
-      // 這樣所有瀏覽器都會顯示相同的狀態（空），不會因為 localStorage 不同而顯示不同
-      return [];
-    }
-
-    // 確保 data 存在且為陣列
-    if (!data || !Array.isArray(data)) {
-      console.warn('⚠️ 資料格式不正確，返回空陣列');
-      return [];
-    }
-
-    const items = data.map(dbToScheduleItem);
-    console.log('✅ 從資料庫載入成功，共', items.length, '筆');
-    
-    // 同步更新 localStorage（作為備用，但不作為主要數據源）
-    saveToLocalStorage(items);
-    
-    return items;
-  } catch (error) {
-    console.error('❌ 載入排程項目異常:', error);
-    // 不再回退到 localStorage，直接返回空陣列
-    return [];
+  // 請求去重：如果已經有請求在進行，返回同一個 Promise
+  if (loadingPromise) {
+    console.log('⏱️ 已有請求在進行中，等待結果...');
+    return loadingPromise;
   }
+
+  // 請求節流：2 秒內只允許一次請求
+  const now = Date.now();
+  if (now - lastRequestTime < REQUEST_THROTTLE_MS) {
+    console.log('⏱️ 請求過於頻繁，使用快取資料（節流中）');
+    if (cachedItems) {
+      return cachedItems;
+    }
+    // 如果沒有快取，等待節流時間後再請求
+    await new Promise(resolve => setTimeout(resolve, REQUEST_THROTTLE_MS - (now - lastRequestTime)));
+  }
+
+  // 快取檢查：30 秒內使用快取
+  if (cachedItems && now - lastLoadTime < CACHE_DURATION) {
+    console.log('📦 使用快取資料（避免重複請求，減少 Egress）');
+    return cachedItems;
+  }
+
+  // 創建新的請求 Promise
+  loadingPromise = (async () => {
+    try {
+      lastRequestTime = Date.now();
+      console.log('📥 開始從資料庫載入排程項目...');
+      
+      const { data, error } = await supabase
+        .from(TABLES.SCHEDULE_ITEMS)
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('❌ 載入排程項目失敗:', error);
+        // 如果失敗但有快取，返回快取
+        if (cachedItems) {
+          console.log('⚠️ 使用快取資料（資料庫載入失敗）');
+          return cachedItems;
+        }
+        return [];
+      }
+
+      // 確保 data 存在且為陣列
+      if (!data || !Array.isArray(data)) {
+        console.warn('⚠️ 資料格式不正確，返回空陣列');
+        if (cachedItems) {
+          return cachedItems;
+        }
+        return [];
+      }
+
+      const items = data.map(dbToScheduleItem);
+      console.log('✅ 從資料庫載入成功，共', items.length, '筆');
+      
+      // 更新快取
+      cachedItems = items;
+      lastLoadTime = Date.now();
+      
+      // 同步更新 localStorage（作為備用，但不作為主要數據源）
+      saveToLocalStorage(items);
+      
+      return items;
+    } catch (error) {
+      console.error('❌ 載入排程項目異常:', error);
+      // 如果失敗但有快取，返回快取
+      if (cachedItems) {
+        console.log('⚠️ 使用快取資料（載入異常）');
+        return cachedItems;
+      }
+      return [];
+    } finally {
+      loadingPromise = null;
+    }
+  })();
+
+  return loadingPromise;
 }
 
 // 儲存排程項目到資料庫
@@ -249,6 +302,9 @@ export function useScheduleData(initialItems: ScheduleItem[] = []) {
       if (success) {
         // 只有成功時才更新 dbItems，避免失敗時觸發同步覆蓋本地狀態
         setItems(newItems);
+        // 更新快取，避免下次載入時重新請求
+        cachedItems = newItems;
+        lastLoadTime = Date.now();
       } else {
         setError('儲存失敗，請檢查網路連線');
         // 儲存失敗時，不更新 dbItems，避免觸發同步覆蓋本地狀態
