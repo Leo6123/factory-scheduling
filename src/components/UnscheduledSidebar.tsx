@@ -207,8 +207,8 @@ export default function UnscheduledSidebar({
             </div>
           )}
           
-          {/* 匯入建議排程 - 需要 canImport 權限 */}
-          {onImportSuggestedSchedule && hasPermission('canImport') && (
+          {/* 匯入建議排程 - 需要 canImportSuggestedSchedule 權限（只有管理員可以使用） */}
+          {onImportSuggestedSchedule && hasPermission('canImportSuggestedSchedule') && (
             <div className="w-full">
               <ImportSuggestedScheduleButton onImport={onImportSuggestedSchedule} />
             </div>
