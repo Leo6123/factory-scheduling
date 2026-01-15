@@ -71,13 +71,11 @@ export default function TimelineLane({
                     ? "border-blue-500 bg-blue-500/10 ring-2 ring-blue-500/50" 
                     : "border-white/10 bg-white/5"}`}
     >
-      {/* 產線標籤 + 設定 */}
+      {/* 產線標籤 */}
       <LineConfigEditor
         lineId={lineId}
         lineName={lineName}
         color={color}
-        config={config}
-        onUpdate={onConfigUpdate}
       />
       
       {/* 時間軸區域 (Droppable) */}

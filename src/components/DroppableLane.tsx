@@ -108,27 +108,12 @@ export default function DroppableLane({
             {lineName}
           </span>
         </div>
-      ) : config && onConfigUpdate ? (
+      ) : (
         <LineConfigEditor
           lineId={lineId}
           lineName={lineName}
           color={color}
-          config={config}
-          onUpdate={onConfigUpdate}
         />
-      ) : (
-        <div
-          className="w-24 flex-shrink-0 flex items-center justify-center 
-                     font-bold text-white text-sm py-4"
-          style={{ backgroundColor: `${color}30` }}
-        >
-          <span
-            className="px-2 py-1 rounded text-xs"
-            style={{ backgroundColor: color }}
-          >
-            {lineName}
-          </span>
-        </div>
       )}
       
       {/* 卡片區域 (Droppable) */}
