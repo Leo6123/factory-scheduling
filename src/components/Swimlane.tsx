@@ -971,25 +971,70 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 更改數量
   const handleQuantityChange = (itemId: string, newQuantity: number) => {
     saveHistory();
-    setScheduleItems((prev) =>
-      prev.map((item) =>
+    setScheduleItems((prev) => {
+      // 先更新數量
+      const updatedItems = prev.map((item) =>
         item.id === itemId
           ? { ...item, quantity: newQuantity }
           : item
-      )
-    );
+      );
+      
+      // 找到被修改的卡片
+      const changedItem = updatedItems.find((item) => item.id === itemId);
+      if (!changedItem || !changedItem.scheduleDate || changedItem.startHour === undefined) {
+        return updatedItems;
+      }
+      
+      // 計算新的時長
+      const outputRate = changedItem.outputRate || 50;
+      let newDuration = outputRate > 0 ? newQuantity / outputRate : 1;
+      if (changedItem.is3Press) newDuration *= 3;
+      else if (changedItem.is2Press) newDuration *= 2;
+      
+      // 處理碰撞
+      return resolveCollisionsAfterChange(
+        updatedItems,
+        itemId,
+        changedItem.lineId,
+        changedItem.scheduleDate,
+        changedItem.startHour,
+        newDuration
+      );
+    });
   };
 
   // 更改出量
   const handleOutputRateChange = (itemId: string, newOutputRate: number) => {
     saveHistory();
-    setScheduleItems((prev) =>
-      prev.map((item) =>
+    setScheduleItems((prev) => {
+      // 先更新出量
+      const updatedItems = prev.map((item) =>
         item.id === itemId
           ? { ...item, outputRate: newOutputRate }
           : item
-      )
-    );
+      );
+      
+      // 找到被修改的卡片
+      const changedItem = updatedItems.find((item) => item.id === itemId);
+      if (!changedItem || !changedItem.scheduleDate || changedItem.startHour === undefined) {
+        return updatedItems;
+      }
+      
+      // 計算新的時長
+      let newDuration = newOutputRate > 0 ? changedItem.quantity / newOutputRate : 1;
+      if (changedItem.is3Press) newDuration *= 3;
+      else if (changedItem.is2Press) newDuration *= 2;
+      
+      // 處理碰撞
+      return resolveCollisionsAfterChange(
+        updatedItems,
+        itemId,
+        changedItem.lineId,
+        changedItem.scheduleDate,
+        changedItem.startHour,
+        newDuration
+      );
+    });
   };
 
   // 更改齊料時間
@@ -1590,6 +1635,116 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   );
 }
 
+// 計算卡片時長的輔助函數
+function getItemDuration(item: ScheduleItem): number {
+  let duration: number;
+  if (item.isCleaningProcess && item.cleaningType) {
+    duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
+  } else if (item.isMaintenance && item.maintenanceHours) {
+    duration = item.maintenanceHours;
+  } else {
+    const outputRate = item.outputRate || 50;
+    duration = outputRate > 0 ? item.quantity / outputRate : 1;
+  }
+  if (item.is3Press) duration *= 3;
+  else if (item.is2Press) duration *= 2;
+  return duration;
+}
+
+// 計算日期與小時的絕對時間（以小時為單位，從某個基準日期開始）
+function getAbsoluteHour(scheduleDate: string, startHour: number): number {
+  // 使用 UTC 時間避免時區問題
+  const date = new Date(`${scheduleDate}T00:00:00Z`);
+  const baseDate = new Date('2020-01-01T00:00:00Z');
+  const hoursDiff = Math.floor((date.getTime() - baseDate.getTime()) / (1000 * 60 * 60));
+  return hoursDiff + startHour;
+}
+
+// 從絕對時間轉換回日期和小時
+function fromAbsoluteHour(absoluteHour: number): { scheduleDate: string; startHour: number } {
+  // 確保 absoluteHour 是正數
+  if (absoluteHour < 0) {
+    absoluteHour = 0;
+  }
+  
+  const baseDate = new Date('2020-01-01T00:00:00Z');
+  const totalMilliseconds = absoluteHour * 60 * 60 * 1000;
+  const newDate = new Date(baseDate.getTime() + totalMilliseconds);
+  
+  // 使用 UTC 時間避免時區問題
+  const year = newDate.getUTCFullYear();
+  const month = String(newDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(newDate.getUTCDate()).padStart(2, '0');
+  const scheduleDate = `${year}-${month}-${day}`;
+  const startHour = newDate.getUTCHours();
+  
+  return { scheduleDate, startHour };
+}
+
+// 重新排列同產線的所有卡片，確保不重疊（考慮跨日）
+function rearrangeLineItems(
+  items: ScheduleItem[],
+  targetLineId: string,
+  triggerDate: string
+): ScheduleItem[] {
+  // 取得同產線的所有已排程項目
+  const lineItems = items
+    .filter((item) => 
+      item.lineId === targetLineId && 
+      item.scheduleDate &&
+      item.startHour !== undefined
+    )
+    .map((item) => ({
+      ...item,
+      duration: getItemDuration(item),
+      absoluteStart: getAbsoluteHour(item.scheduleDate!, item.startHour!)
+    }))
+    .sort((a, b) => a.absoluteStart - b.absoluteStart);
+
+  if (lineItems.length === 0) return items;
+
+  // 重新計算每張卡片的開始時間，確保不重疊
+  const adjustedItems: Record<string, { scheduleDate: string; startHour: number }> = {};
+  let currentEnd = 0;
+
+  for (const item of lineItems) {
+    const itemStart = item.absoluteStart;
+    
+    // 如果卡片開始時間早於當前結束時間，需要調整
+    if (itemStart < currentEnd) {
+      const newPosition = fromAbsoluteHour(currentEnd);
+      adjustedItems[item.id] = newPosition;
+      currentEnd = currentEnd + item.duration;
+    } else {
+      // 不需要調整，但更新 currentEnd
+      currentEnd = itemStart + item.duration;
+    }
+  }
+
+  return items.map((item) => {
+    if (adjustedItems[item.id] !== undefined) {
+      return { 
+        ...item, 
+        scheduleDate: adjustedItems[item.id].scheduleDate,
+        startHour: adjustedItems[item.id].startHour 
+      };
+    }
+    return item;
+  });
+}
+
+// 處理碰撞：修改數量或出量後，重新排列所有卡片
+function resolveCollisionsAfterChange(
+  items: ScheduleItem[],
+  changedId: string,
+  targetLineId: string,
+  scheduleDate: string,
+  startHour: number,
+  changedDuration: number
+): ScheduleItem[] {
+  return rearrangeLineItems(items, targetLineId, scheduleDate);
+}
+
 // 處理碰撞：被插入的卡片自動後退 (同日期同產線)
 function resolveCollisions(
   items: ScheduleItem[],
@@ -1600,62 +1755,5 @@ function resolveCollisions(
   draggedDuration: number,
   lineConfigs: Record<string, LineConfig>
 ): ScheduleItem[] {
-  // 取得同產線同日期的其他項目 (不含拖曳項目)
-  const lineItems = items
-    .filter((item) => 
-      item.lineId === targetLineId && 
-      item.scheduleDate === scheduleDate &&
-      item.id !== draggedId
-    )
-    .map((item) => {
-      // 清機流程：分鐘轉小時，故障維修：使用 maintenanceHours，一般訂單：根據卡片出量計算
-      let duration: number;
-      if (item.isCleaningProcess && item.cleaningType) {
-        duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
-      } else if (item.isMaintenance && item.maintenanceHours) {
-        duration = item.maintenanceHours;
-      } else {
-        // 使用卡片上的出量 (outputRate)，如果沒有設定則預設 50 kg/h
-        const outputRate = item.outputRate || 50;
-        duration = outputRate > 0 
-          ? item.quantity / outputRate 
-          : 1;
-      }
-      
-      // 2押或3押：時長乘以倍數（KG不變）
-      if (item.is3Press) {
-        duration = duration * 3;
-      } else if (item.is2Press) {
-        duration = duration * 2;
-      }
-      
-      return { ...item, duration };
-    })
-    .sort((a, b) => (a.startHour ?? 0) - (b.startHour ?? 0));
-
-  const draggedEnd = dropHour + draggedDuration;
-  let currentEnd = draggedEnd;
-  const adjustedItems: Record<string, number> = {};
-
-  for (const item of lineItems) {
-    const itemStart = item.startHour ?? 0;
-    const itemEnd = itemStart + item.duration;
-    
-    if (itemStart < draggedEnd && itemEnd > dropHour) {
-      adjustedItems[item.id] = currentEnd;
-      currentEnd = currentEnd + item.duration;
-    } else if (itemStart >= currentEnd) {
-      break;
-    } else if (itemStart < currentEnd && itemStart >= draggedEnd) {
-      adjustedItems[item.id] = currentEnd;
-      currentEnd = currentEnd + item.duration;
-    }
-  }
-
-  return items.map((item) => {
-    if (adjustedItems[item.id] !== undefined) {
-      return { ...item, startHour: adjustedItems[item.id] };
-    }
-    return item;
-  });
+  return rearrangeLineItems(items, targetLineId, scheduleDate);
 }

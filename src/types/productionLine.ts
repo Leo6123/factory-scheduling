@@ -30,5 +30,6 @@ export const DEFAULT_LINE_CONFIGS: Record<string, LineConfig> = {
   "XIAOQIAOLONG": { id: "XIAOQIAOLONG", avgOutput: 100 },
   "GRINDING": { id: "GRINDING", avgOutput: 100 },
   "LABORATORY": { id: "LABORATORY", avgOutput: 100 },
+  "RND": { id: "RND", avgOutput: 100 },
 };
 

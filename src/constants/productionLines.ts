@@ -5,7 +5,7 @@ export const UNSCHEDULED_LANE = {
   color: "#6B7280",  // gray
 } as const;
 
-// 12 條產線定義
+// 產線定義（包含主要生產線和輔助產線）
 export const PRODUCTION_LINES = [
   { id: "TS26", name: "TS26", color: "#3B82F6" },      // blue
   { id: "27CC", name: "27CC", color: "#8B5CF6" },      // violet
@@ -31,6 +31,7 @@ export const PRODUCTION_LINES = [
   { id: "XIAOQIAOLONG", name: "小僑隆", color: "#8B5CF6" },  // violet
   { id: "GRINDING", name: "磨粉", color: "#92400E" },  // brown
   { id: "LABORATORY", name: "實驗室", color: "#0EA5E9" },  // sky blue
+  { id: "RND", name: "R&D", color: "#06B6D4" },  // cyan
 ] as const;
 
 // 所有泳道 (含未排程)
@@ -47,7 +48,7 @@ export const CAPACITY_LINES = [
 // 不計入產量與排程的產線（僅用於顯示和配置，不參與統計）
 export const NON_CAPACITY_LINES = [
   "CRYST", "CCD", "DRYBLEND", "PACKAGE", 
-  "HS1", "HS2", "HS3", "HS4", "M600", "HC", "XIAOQIAOLONG", "GRINDING", "LABORATORY"
+  "HS1", "HS2", "HS3", "HS4", "M600", "HC", "XIAOQIAOLONG", "GRINDING", "LABORATORY", "RND"
 ] as const;
 
 // 混合缸卡片允許的產線（只能排到這些產線）
