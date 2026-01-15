@@ -360,38 +360,32 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
         </div>
       )}
       
-      {/* 看配方 - viewer 預設收合，有編輯權限可以展開/收合 */}
-      {item.recipeItems && item.recipeItems.length > 0 && (
+      {/* 看配方 - 只有 admin/operator 可以看，viewer 完全隱藏 */}
+      {canEdit && item.recipeItems && item.recipeItems.length > 0 && (
         <div className="text-xs mb-1">
-          {canEdit ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsRecipeExpanded(!isRecipeExpanded);
-              }}
-              className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsRecipeExpanded(!isRecipeExpanded);
+            }}
+            className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+          >
+            <span className="text-gray-500">看配方:</span>
+            <span className="font-medium">
+              {isRecipeExpanded ? "收合" : "展開"} ({item.recipeItems.length} 項)
+            </span>
+            <svg
+              className={`w-3 h-3 transition-transform ${isRecipeExpanded ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <span className="text-gray-500">看配方:</span>
-              <span className="font-medium">
-                {isRecipeExpanded ? "收合" : "展開"} ({item.recipeItems.length} 項)
-              </span>
-              <svg
-                className={`w-3 h-3 transition-transform ${isRecipeExpanded ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          ) : (
-            <div className="text-gray-500">
-              看配方: <span className="text-gray-400">({item.recipeItems.length} 項)</span>
-            </div>
-          )}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
           
-          {/* 配方列表 - 有編輯權限時可展開/收合，viewer 預設收合（不顯示） */}
-          {(canEdit ? isRecipeExpanded : false) && (
+          {/* 配方列表 - 展開時顯示 */}
+          {isRecipeExpanded && (
             <div className="mt-2 ml-4 space-y-1.5 border-l-2 border-blue-500/30 pl-3">
               {item.recipeItems.map((recipe: RecipeItem, idx: number) => (
                 <div key={idx} className="text-[11px] text-gray-300 bg-gray-800/50 rounded p-1.5">

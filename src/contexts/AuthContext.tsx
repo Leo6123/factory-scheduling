@@ -63,47 +63,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result.error) {
         console.warn('⚠️ [Auth] 查詢 user_profiles 失敗:', result.error.message, result.error.code);
         
-        // 如果是表不存在或權限錯誤，立即返回默認角色
+        // 如果是表不存在或權限錯誤，立即返回默認角色 viewer（更安全）
         if (result.error.code === '42P01' || 
             result.error.code === 'PGRST301' ||
             result.error.message?.includes('does not exist') || 
             result.error.message?.includes('relation') ||
             result.error.message?.includes('permission') || 
             result.error.message?.includes('RLS')) {
-          console.warn('⚠️ [Auth] 可能是表不存在或 RLS 政策問題，使用默認角色 operator');
-          return 'operator';
+          console.warn('⚠️ [Auth] 可能是表不存在或 RLS 政策問題，使用默認角色 viewer');
+          return 'viewer';
         }
         
-        // 其他錯誤，使用默認角色
-        console.warn('⚠️ [Auth] 獲取用戶角色失敗，使用默認角色 operator');
-        return 'operator';
+        // 其他錯誤，使用默認角色 viewer（更安全）
+        console.warn('⚠️ [Auth] 獲取用戶角色失敗，使用默認角色 viewer');
+        return 'viewer';
       }
 
       // maybeSingle 返回 null 如果找不到記錄
       if (result.data === null || !result.data) {
-        console.warn('⚠️ [Auth] user_profiles 中沒有該用戶記錄（ID:', supabaseUser.id, '），使用默認角色 operator');
+        console.warn('⚠️ [Auth] user_profiles 中沒有該用戶記錄（ID:', supabaseUser.id, '），使用默認角色 viewer');
         console.warn('💡 請執行 supabase_set_admin_now.sql 為用戶創建 user_profiles 記錄');
-        return 'operator';
+        return 'viewer';
       }
 
       if (result.data?.role) {
         const role = result.data.role as UserRole;
-        console.log('✅ [Auth] 獲取用戶角色成功:', role, 'Email:', supabaseUser.email);
+        // 驗證角色值是否有效
+        if (role !== 'admin' && role !== 'operator' && role !== 'viewer') {
+          console.warn('⚠️ [Auth] 獲取到無效的角色值:', role, '，使用默認角色 viewer');
+          console.warn('📋 [Auth] 完整查詢結果:', JSON.stringify(result.data));
+          return 'viewer';
+        }
+        console.log('✅ [Auth] 獲取用戶角色成功:', role, 'Email:', supabaseUser.email, 'ID:', supabaseUser.id);
+        // 記錄完整的查詢結果以便調試
+        console.log('📋 [Auth] 完整查詢結果:', JSON.stringify(result.data));
+        // 如果角色是 operator，添加警告日誌（可能是資料問題）
+        if (role === 'operator') {
+          console.warn('⚠️ [Auth] 注意：用戶角色是 operator，請確認資料庫中的角色值是否正確');
+          console.warn('💡 如果用戶應該是 viewer，請檢查 user_profiles 表中的 role 欄位');
+        }
         return role;
       }
 
-      // 如果沒有 role 欄位，使用默認角色
-      console.warn('⚠️ [Auth] user_profiles 記錄中沒有 role 欄位，使用默認角色 operator');
-      return 'operator';
+      // 如果沒有 role 欄位，使用默認角色 viewer（更安全，權限更少）
+      console.warn('⚠️ [Auth] user_profiles 記錄中沒有 role 欄位，使用默認角色 viewer');
+      return 'viewer';
       
     } catch (error: any) {
       console.error('❌ [Auth] 獲取用戶角色異常:', error.message || error);
-      // 發生異常時（包括超時），立即返回默認角色
+      // 發生異常時（包括超時），立即返回默認角色 viewer（更安全）
       if (error.message?.includes('超時')) {
-        console.warn('⚠️ [Auth] 獲取角色超時（3 秒），使用默認角色 operator');
+        console.warn('⚠️ [Auth] 獲取角色超時（2 秒），使用默認角色 viewer');
         console.warn('💡 這可能是因為資料庫查詢太慢，請檢查 Supabase 狀態');
       }
-      return 'operator'; // 安全默認角色
+      return 'viewer'; // 更安全的默認角色（權限更少）
     }
   };
 
@@ -144,14 +157,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // 獲取用戶角色（帶超時保護，getUserRole 內部已有 2 秒超時）
       const rolePromise = getUserRole(supabaseUser);
-      const role = await Promise.race([
+      let role = await Promise.race([
         rolePromise,
         timeoutPromise,
       ]) as UserRole;
 
+      // 驗證角色值
+      if (role !== 'admin' && role !== 'operator' && role !== 'viewer') {
+        console.warn('⚠️ [updateUser] 獲取到無效的角色值:', role, '，使用默認角色 viewer');
+        role = 'viewer';
+      }
+
       // 清除超時
       cleanup();
 
+      console.log('✅ [updateUser] 設置用戶角色:', role, 'Email:', supabaseUser.email, 'ID:', supabaseUser.id);
       setUser({
         id: supabaseUser.id,
         email: supabaseUser.email || '',
@@ -166,18 +186,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.error('❌ 更新用戶狀態失敗:', error.message || error);
       
-      // 即使失敗，也設定用戶（使用默認角色），這樣用戶才能繼續使用系統
-      console.warn('⚠️ 使用默認角色 operator，讓用戶可以繼續使用系統');
+      // 即使失敗，也設定用戶（使用默認角色 viewer），這樣用戶才能繼續使用系統
+      console.warn('⚠️ 使用默認角色 viewer，讓用戶可以繼續使用系統（更安全）');
       setUser({
         id: supabaseUser.id,
         email: supabaseUser.email || '',
-        role: 'operator', // 使用安全的默認角色
+        role: 'viewer', // 使用更安全的默認角色（權限更少）
         createdAt: supabaseUser.created_at,
       });
       setSession(currentSession);
       
       if (error.message?.includes('超時')) {
-        console.warn('⚠️ 更新用戶狀態超時，已使用默認角色 operator');
+        console.warn('⚠️ 更新用戶狀態超時，已使用默認角色 viewer');
       }
     } finally {
       // 確保 loading 狀態被重置（即使發生異常）
@@ -255,29 +275,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           console.log('✅ 找到現有會話，用戶:', session.user.email);
           
-          // 立即設定 session 和基本用戶信息（不等待角色查詢完成）
-          // 這樣可以讓用戶立即進入系統，角色查詢在後台完成
-          // 注意：多分頁檢測在 ProtectedRoute 中進行，這裡不需要檢測
+          // 立即設定 session，但不立即設置用戶（等待角色查詢完成）
+          // 這樣可以確保角色是正確的，避免暫時顯示錯誤的角色
           setSession(session);
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            role: 'operator', // 臨時使用默認角色
-            createdAt: session.user.created_at,
-          });
           setLoading(false); // 立即停止 loading，讓用戶可以進入系統
           
-          // 在後台異步更新角色（不阻塞 UI）
+          // 立即獲取角色（不阻塞 UI，但確保角色正確）
           getUserRole(session.user)
             .then((role) => {
               if (mounted) {
-                console.log('✅ 後台獲取角色成功，更新為:', role);
-                setUser(prev => prev ? { ...prev, role } : null);
+                console.log('✅ 初始化獲取角色成功，設置為:', role, 'Email:', session.user.email);
+                // 驗證角色值
+                if (role !== 'admin' && role !== 'operator' && role !== 'viewer') {
+                  console.warn('⚠️ 獲取到無效的角色值:', role, '，使用默認角色 viewer');
+                  role = 'viewer';
+                }
+                setUser({
+                  id: session.user.id,
+                  email: session.user.email || '',
+                  role,
+                  createdAt: session.user.created_at,
+                });
               }
             })
             .catch((err) => {
-              console.warn('⚠️ 後台獲取角色失敗，保持默認角色:', err);
-              // 保持默認角色，不影響用戶使用
+              console.warn('⚠️ 初始化獲取角色失敗，使用默認角色 viewer:', err);
+              // 使用默認角色 viewer，不影響用戶使用（更安全）
+              if (mounted) {
+                setUser({
+                  id: session.user.id,
+                  email: session.user.email || '',
+                  role: 'viewer',
+                  createdAt: session.user.created_at,
+                });
+              }
             });
         } else {
           console.log('ℹ️ 沒有現有會話');
@@ -362,19 +393,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // 只確保 loading 狀態正確，並確保 session 是最新的
           setLoading(false);
           setSession(session);
+          // 如果用戶狀態不存在或 email 不匹配，暫時保持當前角色或使用默認角色
+          // 但不強制設置為 operator，避免覆蓋正確的角色
           if (!user || user.email !== session.user.email) {
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              role: 'operator',
-              createdAt: session.user.created_at,
-            });
+            // 延遲調用 updateUser 來獲取正確的角色，避免在初始化期間設置錯誤的角色
+            setTimeout(async () => {
+              if (!isInitializingRef.current) {
+                await updateUser(session.user, session);
+              }
+            }, 1000);
           }
           return;
         }
         
-        // 如果用戶狀態已經存在且 email 匹配，就不需要再次調用 updateUser
+        // 如果用戶狀態已經存在且 email 匹配，檢查角色是否需要更新
+        // 如果角色是 viewer 或 operator（可能是默認值），重新獲取正確的角色
         if (user && user.email === session.user.email && session) {
+          // 如果角色是 viewer 或 operator 且不是初始化期間，可能是錯誤的默認值，重新獲取
+          // 注意：viewer 和 operator 都可能被用作默認值，所以都要檢查
+          if ((user.role === 'viewer' || user.role === 'operator') && !isInitializingRef.current) {
+            console.log('⚠️ [onAuthStateChange] 檢測到角色可能是默認值', user.role, '，重新獲取正確角色');
+            // 延遲調用 updateUser 來獲取正確的角色
+            setTimeout(async () => {
+              await updateUser(session.user, session);
+            }, 500);
+            return;
+          }
           console.log('ℹ️ [onAuthStateChange] 用戶狀態已存在，跳過 updateUser（避免重複更新）');
           // 只確保 loading 狀態正確，並確保 session 是最新的
           setLoading(false);
@@ -624,25 +668,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('⚠️ 註冊 device session 異常:', err);
         }
 
-        // 立即設定 session 和基本用戶信息（不等待角色查詢完成）
-        // 這樣登入可以立即完成，角色查詢在後台進行
+        // 立即設定 session，但不立即設置用戶（等待角色查詢完成）
+        // 這樣可以確保角色是正確的，避免暫時顯示錯誤的角色
         setSession(data.session);
-        setUser({
-          id: data.user.id,
-          email: data.user.email || '',
-          role: 'operator', // 臨時使用默認角色
-          createdAt: data.user.created_at,
-        });
         setLoading(false); // 立即停止 loading
         
-        // 在後台異步更新角色（不阻塞登入流程）
+        // 立即獲取角色（不阻塞登入流程，但確保角色正確）
         getUserRole(data.user)
           .then((role) => {
-            console.log('✅ 登入後獲取角色成功，更新為:', role);
-            setUser(prev => prev ? { ...prev, role } : null);
+            console.log('✅ 登入後獲取角色成功，設置為:', role, 'Email:', data.user.email);
+            // 驗證角色值
+            if (role !== 'admin' && role !== 'operator' && role !== 'viewer') {
+              console.warn('⚠️ 獲取到無效的角色值:', role, '，使用默認角色 viewer');
+              role = 'viewer';
+            }
+            setUser({
+              id: data.user.id,
+              email: data.user.email || '',
+              role,
+              createdAt: data.user.created_at,
+            });
           })
           .catch((err) => {
-            console.warn('⚠️ 登入後獲取角色失敗，保持默認角色:', err);
+            console.warn('⚠️ 登入後獲取角色失敗，使用默認角色 viewer:', err);
+            // 使用默認角色 viewer，不影響用戶使用（更安全）
+            setUser({
+              id: data.user.id,
+              email: data.user.email || '',
+              role: 'viewer',
+              createdAt: data.user.created_at,
+            });
             // 保持默認角色，不影響登入
           });
         

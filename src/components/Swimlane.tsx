@@ -133,7 +133,7 @@ function getBlocksForDate(
 
 export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 權限檢查
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, loading } = useAuth();
   const canEdit = hasPermission('canEdit');
   const canView = hasPermission('canView');
 
@@ -343,11 +343,51 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     saveHistory();
     setScheduleItems(items);
     setLineConfigs(configs);
-    // 同時保存到資料庫
-    saveScheduleItems(items).catch((err) => {
-      console.error('載入存檔後保存到資料庫失敗:', err);
-    });
-  }, [saveScheduleItems]);
+
+    // 訪客不保存到資料庫，避免觸發任何認證狀態更新
+    if (!canEdit || user?.role === 'viewer') {
+      console.log('ℹ️ 訪客載入存檔，不保存到資料庫');
+      return;
+    }
+    
+    // 等待認證狀態完全穩定後再保存到資料庫
+    // 避免在認證初始化期間觸發認證狀態變化導致角色變成 operator
+    const waitForAuthStable = async () => {
+      let attempts = 0;
+      const maxAttempts = 20; // 最多等待 10 秒（20 * 500ms）
+      
+      while (attempts < maxAttempts) {
+        // 檢查認證狀態是否已穩定（用戶已設置且不是 loading）
+        if (user && !loading && user.role) {
+          console.log('✅ 認證狀態已穩定，開始保存快照到資料庫，角色:', user.role);
+          // 再等待 1 秒確保完全穩定
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          try {
+            await saveScheduleItems(items);
+            console.log('✅ 快照已保存到資料庫');
+          } catch (err) {
+            console.error('載入存檔後保存到資料庫失敗:', err);
+          }
+          return;
+        }
+        
+        // 等待 500ms 後再檢查
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+      
+      // 如果超時，仍然嘗試保存（但記錄警告）
+      console.warn('⚠️ 等待認證狀態穩定超時，仍嘗試保存快照到資料庫');
+      try {
+        await saveScheduleItems(items);
+        console.log('✅ 快照已保存到資料庫（超時後）');
+      } catch (err) {
+        console.error('載入存檔後保存到資料庫失敗:', err);
+      }
+    };
+    
+    waitForAuthStable();
+  }, [saveScheduleItems, user, loading, canEdit]);
 
   // 除錯：顯示 QC 狀態資訊
   useEffect(() => {
@@ -363,47 +403,10 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     }
   }, [googleSheetId, qcData.length, isQCLoading, qcError]);
 
-  // 應用啟動時檢查是否有存檔
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    const checkSnapshot = () => {
-      try {
-        const snapshot = localStorage.getItem('factory_schedule_snapshot');
-        return !!snapshot;
-      } catch {
-        return false;
-      }
-    };
-
-    // 只在首次載入時檢查（避免重複提示）
-    const hasChecked = sessionStorage.getItem('has_checked_snapshot');
-    if (!hasChecked && checkSnapshot()) {
-      sessionStorage.setItem('has_checked_snapshot', 'true');
-      
-      // 延遲提示，確保頁面已載入
-      setTimeout(() => {
-        if (window.confirm('📦 偵測到有存檔，是否要載入存檔？\n\n點擊「確定」載入存檔，點擊「取消」繼續使用目前排程。')) {
-          try {
-            const snapshotData = localStorage.getItem('factory_schedule_snapshot');
-            const configsData = localStorage.getItem('factory_line_configs_snapshot');
-            
-            if (snapshotData) {
-              const items: ScheduleItem[] = JSON.parse(snapshotData);
-              const configs: Record<string, LineConfig> = configsData 
-                ? JSON.parse(configsData)
-                : {};
-              
-              handleLoadSnapshot(items, configs);
-            }
-          } catch (error) {
-            console.error('載入存檔失敗:', error);
-            alert('❌ 載入存檔失敗');
-          }
-        }
-      }, 500);
-    }
-  }, [handleLoadSnapshot]); // 依賴 handleLoadSnapshot
+  // 已移除：應用啟動時詢問是否載入存檔的功能
+  // 原因：點擊「確定」載入存檔會導致訪客角色變成操作員
+  // 現在排程資料直接從 Supabase 資料庫載入，不再依賴 localStorage 存檔
+  // 如果需要手動載入存檔，操作員可以透過左側「存檔管理」按鈕載入
   
   // 月份選擇狀態
   const now = new Date();
