@@ -35,9 +35,10 @@ function getBlocksForExport(
     if (filterStartDate && item.scheduleDate < filterStartDate) continue;
     if (filterEndDate && item.scheduleDate > filterEndDate) continue;
 
-    const config = lineConfigs[item.lineId];
-    const duration = config && config.avgOutput > 0 
-      ? item.quantity / config.avgOutput 
+    // 使用卡片上的出量 (outputRate)，如果沒有設定則預設 50 kg/h
+    const outputRate = item.outputRate || 50;
+    const duration = outputRate > 0 
+      ? item.quantity / outputRate 
       : 0;
 
     const line = PRODUCTION_LINES.find(l => l.id === item.lineId);

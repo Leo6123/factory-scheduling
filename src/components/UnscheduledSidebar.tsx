@@ -34,6 +34,7 @@ interface UnscheduledSidebarProps {
   onToggle2Press?: (itemId: string) => void;  // 切換 2押 狀態
   onToggle3Press?: (itemId: string) => void;  // 切換 3押 狀態
   onQuantityChange?: (itemId: string, newQuantity: number) => void;  // 更改數量
+  onOutputRateChange?: (itemId: string, newOutputRate: number) => void;  // 更改出量
   onMaterialReadyDateChange?: (itemId: string, newDate: string) => void;  // 更改齊料時間
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
   isDragging?: boolean;  // 是否正在拖曳
@@ -65,6 +66,7 @@ export default function UnscheduledSidebar({
   onToggle2Press,
   onToggle3Press,
   onQuantityChange,
+  onOutputRateChange,
   onMaterialReadyDateChange,
   onToggleAbnormalIncomplete,
   isDragging = false,
@@ -343,6 +345,7 @@ export default function UnscheduledSidebar({
                   onToggle2Press={onToggle2Press}
                   onToggle3Press={onToggle3Press}
                   onQuantityChange={onQuantityChange}
+                  onOutputRateChange={onOutputRateChange}
                   onMaterialReadyDateChange={onMaterialReadyDateChange}
                   onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
                   qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}

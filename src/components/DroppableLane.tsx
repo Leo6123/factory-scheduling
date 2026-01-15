@@ -22,6 +22,7 @@ interface DroppableLaneProps {
   onToggle2Press?: (itemId: string) => void;  // 切換 2押 狀態
   onToggle3Press?: (itemId: string) => void;  // 切換 3押 狀態
   onQuantityChange?: (itemId: string, newQuantity: number) => void;  // 更改數量
+  onOutputRateChange?: (itemId: string, newOutputRate: number) => void;  // 更改出量
   onMaterialReadyDateChange?: (itemId: string, newDate: string) => void;  // 更改齊料時間
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
   getBatchQCStatus?: (batchNumber: string) => 'QC中' | 'QC完成' | 'NG' | null;  // 取得 QC 狀態
@@ -44,6 +45,7 @@ export default function DroppableLane({
   onToggle2Press,
   onToggle3Press,
   onQuantityChange,
+  onOutputRateChange,
   onMaterialReadyDateChange,
   onToggleAbnormalIncomplete,
   getBatchQCStatus,
@@ -68,10 +70,19 @@ export default function DroppableLane({
     })
     .reduce((sum, item) => sum + item.quantity, 0);
   
-  // 計算預估生產時間 (小時)
-  const estimatedHours = config && config.avgOutput > 0 
-    ? (totalQuantity / config.avgOutput).toFixed(1) 
-    : null;
+  // 計算預估生產時間 (小時) - 根據每張卡片的出量分別計算再加總
+  const estimatedHours = items
+    .filter((item) => {
+      if (item.materialDescription === "NG修色") return false;
+      if (item.isCleaningProcess) return false;
+      if (item.isMaintenance) return false;
+      return true;
+    })
+    .reduce((sum, item) => {
+      const outputRate = item.outputRate || 50;
+      return sum + (outputRate > 0 ? item.quantity / outputRate : 0);
+    }, 0)
+    .toFixed(1);
 
   // 計算剩餘產能
   const remainingCapacity = monthlyCapacity !== undefined 
@@ -140,6 +151,7 @@ export default function DroppableLane({
               onToggle2Press={onToggle2Press}
               onToggle3Press={onToggle3Press}
               onQuantityChange={onQuantityChange}
+              onOutputRateChange={onOutputRateChange}
               onMaterialReadyDateChange={onMaterialReadyDateChange}
               onToggleAbnormalIncomplete={onToggleAbnormalIncomplete}
               qcStatus={getBatchQCStatus ? getBatchQCStatus(item.batchNumber) : null}

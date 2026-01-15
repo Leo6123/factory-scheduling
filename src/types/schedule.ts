@@ -22,6 +22,7 @@ export interface ScheduleItem {
   lineId: string;                // 所屬產線 ID
   scheduleDate?: string;         // 排程日期 (YYYY-MM-DD) - 開始日期
   startHour?: number;            // 排程開始時間 (小時，0-24)，undefined 表示未設定
+  outputRate?: number;           // 出量 (kg/h)，預設 50
   needsCrystallization?: boolean; // 是否需要結晶
   needsCCD?: boolean;            // 是否需要 CCD 色選
   needsDryblending?: boolean;    // 是否需要 Dryblending
@@ -40,6 +41,9 @@ export interface ScheduleItem {
   recipeItems?: import('./recipe').RecipeItem[];  // 配方項目列表
   remark?: string;              // Remark 備註
 }
+
+// 預設出量 (kg/h)
+export const DEFAULT_OUTPUT_RATE = 50;
 
 // 跨日區塊顯示用 (非儲存用)
 export interface ScheduleBlockDisplay {

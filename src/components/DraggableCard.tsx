@@ -18,17 +18,20 @@ interface DraggableCardProps {
   onToggle2Press?: (itemId: string) => void;  // 切換 2押 狀態
   onToggle3Press?: (itemId: string) => void;  // 切換 3押 狀態
   onQuantityChange?: (itemId: string, newQuantity: number) => void;  // 更改數量
+  onOutputRateChange?: (itemId: string, newOutputRate: number) => void;  // 更改出量
   onMaterialReadyDateChange?: (itemId: string, newDate: string) => void;  // 更改齊料時間
   onToggleAbnormalIncomplete?: (itemId: string) => void;  // 切換異常未完成狀態
   qcStatus?: 'QC中' | 'QC完成' | 'NG' | null;  // QC 狀態
   suggestedSchedule?: string[] | null;  // 建議排程
 }
 
-export default function DraggableCard({ item, color, onToggleCrystallization, onToggleCCD, onToggleDryblending, onTogglePackage, onToggle2Press, onToggle3Press, onQuantityChange, onMaterialReadyDateChange, onToggleAbnormalIncomplete, qcStatus, suggestedSchedule }: DraggableCardProps) {
+export default function DraggableCard({ item, color, onToggleCrystallization, onToggleCCD, onToggleDryblending, onTogglePackage, onToggle2Press, onToggle3Press, onQuantityChange, onOutputRateChange, onMaterialReadyDateChange, onToggleAbnormalIncomplete, qcStatus, suggestedSchedule }: DraggableCardProps) {
   const { hasPermission, user } = useAuth();
   const canEdit = hasPermission('canEdit');
   const [isEditingQuantity, setIsEditingQuantity] = useState(false);
   const [editQuantity, setEditQuantity] = useState(item.quantity.toString());
+  const [isEditingOutputRate, setIsEditingOutputRate] = useState(false);
+  const [editOutputRate, setEditOutputRate] = useState((item.outputRate || 50).toString());
   const [isEditingMaterialReadyDate, setIsEditingMaterialReadyDate] = useState(false);
   const [editMaterialReadyDate, setEditMaterialReadyDate] = useState(item.materialReadyDate || '');
   const [isRecipeExpanded, setIsRecipeExpanded] = useState(false);
@@ -39,6 +42,19 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
       setIsRecipeExpanded(false);
     }
   }, [canEdit, isRecipeExpanded]);
+
+  // 同步 item 的更新到編輯狀態（當 item 更新時，如果不在編輯模式，更新顯示值）
+  useEffect(() => {
+    if (!isEditingQuantity) {
+      setEditQuantity(item.quantity.toString());
+    }
+  }, [item.quantity, isEditingQuantity]);
+
+  useEffect(() => {
+    if (!isEditingOutputRate) {
+      setEditOutputRate((item.outputRate || 50).toString());
+    }
+  }, [item.outputRate, isEditingOutputRate]);
 
   // 根據 Material Number (productName) 的第三個字元判斷顏色
   const cardColor = color || getProductColor(item.productName);
@@ -115,6 +131,31 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
       handleQuantitySave();
     } else if (e.key === "Escape") {
       setIsEditingQuantity(false);
+    }
+  };
+
+  // 出量編輯處理
+  const handleOutputRateClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onOutputRateChange) {
+      setEditOutputRate((item.outputRate || 50).toString());
+      setIsEditingOutputRate(true);
+    }
+  };
+
+  const handleOutputRateSave = () => {
+    const newRate = parseFloat(editOutputRate);
+    if (!isNaN(newRate) && newRate > 0) {
+      onOutputRateChange?.(item.id, newRate);
+    }
+    setIsEditingOutputRate(false);
+  };
+
+  const handleOutputRateKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleOutputRateSave();
+    } else if (e.key === "Escape") {
+      setIsEditingOutputRate(false);
     }
   };
 
@@ -257,6 +298,35 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
                 title={canEdit && onQuantityChange ? "點擊編輯數量" : undefined}
               >
                 {item.quantity.toLocaleString()} KG
+              </span>
+            )}
+          </div>
+          
+          {/* 出量 - 可編輯（需有編輯權限） */}
+          <div 
+            className="text-xs text-gray-300 mb-1"
+            onPointerDown={(e) => isEditingOutputRate && e.stopPropagation()}
+          >
+            <span className="text-gray-500">出量:</span>{" "}
+            {isEditingOutputRate && canEdit ? (
+              <input
+                type="number"
+                value={editOutputRate}
+                onChange={(e) => setEditOutputRate(e.target.value)}
+                onBlur={handleOutputRateSave}
+                onKeyDown={handleOutputRateKeyDown}
+                className="w-16 px-1 py-0.5 bg-gray-800 border border-orange-500 rounded text-orange-400 font-semibold text-xs outline-none"
+                autoFocus
+                step="1"
+                min="1"
+              />
+            ) : (
+              <span 
+                className={`font-semibold text-orange-400 ${canEdit && onOutputRateChange ? "cursor-pointer hover:underline hover:text-orange-300" : ""}`}
+                onClick={canEdit ? handleOutputRateClick : undefined}
+                title={canEdit && onOutputRateChange ? "點擊編輯出量" : undefined}
+              >
+                {(item.outputRate || 50)} kg/h
               </span>
             )}
           </div>

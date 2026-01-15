@@ -57,15 +57,17 @@ function getBlocksForDate(
     
     // 清機流程：quantity 代表分鐘，需轉換為小時
     // 故障維修：使用 maintenanceHours
-    // 一般訂單：根據產能計算時長
+    // 一般訂單：根據卡片上的出量 (outputRate) 計算時長
     let totalDuration: number;
     if (item.isCleaningProcess && item.cleaningType) {
       totalDuration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60; // 分鐘轉小時
     } else if (item.isMaintenance && item.maintenanceHours) {
       totalDuration = item.maintenanceHours; // 直接使用小時
     } else {
-      totalDuration = config && config.avgOutput > 0 
-        ? item.quantity / config.avgOutput 
+      // 使用卡片上的出量 (outputRate)，如果沒有設定則預設 50 kg/h
+      const outputRate = item.outputRate || 50;
+      totalDuration = outputRate > 0 
+        ? item.quantity / outputRate 
         : 1;
     }
     
@@ -474,9 +476,10 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       // 故障維修：使用 maintenanceHours
       duration = item.maintenanceHours;
     } else {
-      const config = lineConfigs[targetLineId];
-      if (!config || config.avgOutput <= 0) return 1;
-      duration = item.quantity / config.avgOutput;
+      // 使用卡片上的出量 (outputRate)，如果沒有設定則預設 50 kg/h
+      const outputRate = item.outputRate || 50;
+      if (outputRate <= 0) return 1;
+      duration = item.quantity / outputRate;
     }
     
     // 2押或3押：時長乘以倍數（KG不變）
@@ -687,16 +690,17 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       }
     }
     
-    const config = lineConfigs[targetLineId];
-    // 清機流程：分鐘轉小時，故障維修：使用 maintenanceHours，一般訂單：根據產能計算
+    // 清機流程：分鐘轉小時，故障維修：使用 maintenanceHours，一般訂單：根據卡片出量計算
     let draggedDuration: number;
     if (draggedItem.isCleaningProcess && draggedItem.cleaningType) {
       draggedDuration = CLEANING_PROCESS_DURATION[draggedItem.cleaningType] / 60;
     } else if (draggedItem.isMaintenance && draggedItem.maintenanceHours) {
       draggedDuration = draggedItem.maintenanceHours;
     } else {
-      draggedDuration = config && config.avgOutput > 0 
-        ? draggedItem.quantity / config.avgOutput 
+      // 使用卡片上的出量 (outputRate)，如果沒有設定則預設 50 kg/h
+      const outputRate = draggedItem.outputRate || 50;
+      draggedDuration = outputRate > 0 
+        ? draggedItem.quantity / outputRate 
         : 1;
     }
     
@@ -976,6 +980,18 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     );
   };
 
+  // 更改出量
+  const handleOutputRateChange = (itemId: string, newOutputRate: number) => {
+    saveHistory();
+    setScheduleItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? { ...item, outputRate: newOutputRate }
+          : item
+      )
+    );
+  };
+
   // 更改齊料時間
   const handleMaterialReadyDateChange = (itemId: string, newDate: string) => {
     saveHistory();
@@ -1218,12 +1234,13 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
         // 異常未完成不計入 KG
         if (block.item.isAbnormalIncomplete) continue;
         
-        // 根據當天顯示的時長計算可完成數量
-        if (config && config.avgOutput > 0) {
-          const dayQuantity = block.displayDuration * config.avgOutput;
+        // 根據當天顯示的時長計算可完成數量（使用卡片上的出量）
+        const outputRate = block.item.outputRate || 50;
+        if (outputRate > 0) {
+          const dayQuantity = block.displayDuration * outputRate;
           total += dayQuantity;
         } else {
-          // 無產能設定時，只有完全在當天完成的才計入
+          // 無出量設定時，只有完全在當天完成的才計入
           if (!block.isCarryOver && !block.isContinued) {
             total += block.item.quantity;
           }
@@ -1298,6 +1315,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
           onToggle2Press={handleToggle2Press}
           onToggle3Press={handleToggle3Press}
           onQuantityChange={handleQuantityChange}
+          onOutputRateChange={handleOutputRateChange}
           onMaterialReadyDateChange={handleMaterialReadyDateChange}
           onToggleAbnormalIncomplete={handleToggleAbnormalIncomplete}
           isDragging={activeItem !== null}
@@ -1546,6 +1564,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
                       onToggle2Press={handleToggle2Press}
                       onToggle3Press={handleToggle3Press}
                       onQuantityChange={handleQuantityChange}
+                      onOutputRateChange={handleOutputRateChange}
                       onMaterialReadyDateChange={handleMaterialReadyDateChange}
                       onToggleAbnormalIncomplete={handleToggleAbnormalIncomplete}
                       getBatchQCStatus={getBatchQCStatus}
@@ -1589,16 +1608,17 @@ function resolveCollisions(
       item.id !== draggedId
     )
     .map((item) => {
-      const config = lineConfigs[targetLineId];
-      // 清機流程：分鐘轉小時，故障維修：使用 maintenanceHours，一般訂單：根據產能計算
+      // 清機流程：分鐘轉小時，故障維修：使用 maintenanceHours，一般訂單：根據卡片出量計算
       let duration: number;
       if (item.isCleaningProcess && item.cleaningType) {
         duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
       } else if (item.isMaintenance && item.maintenanceHours) {
         duration = item.maintenanceHours;
       } else {
-        duration = config && config.avgOutput > 0 
-          ? item.quantity / config.avgOutput 
+        // 使用卡片上的出量 (outputRate)，如果沒有設定則預設 50 kg/h
+        const outputRate = item.outputRate || 50;
+        duration = outputRate > 0 
+          ? item.quantity / outputRate 
           : 1;
       }
       
