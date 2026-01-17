@@ -181,7 +181,9 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
         // 這通常發生在首次載入或重新整理時
         if (prev.length === 0 && dbItemsArray.length > 0) {
           console.log('✅ 本地狀態為空，使用資料庫資料（', dbItemsArray.length, '筆）');
-          return dbItemsArray;
+          // 載入時執行碰撞檢測，修正所有重疊的卡片
+          const fixedItems = fixAllOverlaps(dbItemsArray);
+          return fixedItems;
         }
         
         // 如果 prev 的項目數少於 dbItems，可能是因為刪除操作
@@ -793,7 +795,14 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
 
   const handleAddItem = (item: ScheduleItem) => {
     saveHistory();
-    setScheduleItems((prev) => [...prev, item]);
+    setScheduleItems((prev) => {
+      const newItems = [...prev, item];
+      // 如果新增的卡片有排程日期和開始時間，觸發碰撞檢測
+      if (item.scheduleDate && item.startHour !== undefined && item.lineId && item.lineId !== UNSCHEDULED_LANE.id) {
+        return rearrangeLineItems(newItems, item.lineId, item.scheduleDate);
+      }
+      return newItems;
+    });
   };
 
   const handleClear = async () => {
@@ -1089,8 +1098,8 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 更改維修時長
   const handleMaintenanceHoursChange = (itemId: string, hours: number) => {
     saveHistory();
-    setScheduleItems((prev) =>
-      prev.map((item) =>
+    setScheduleItems((prev) => {
+      const updatedItems = prev.map((item) =>
         item.id === itemId
           ? { 
               ...item, 
@@ -1099,8 +1108,15 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
               materialDescription: `${hours} 小時`
             }
           : item
-      )
-    );
+      );
+      
+      // 找到被修改的項目，觸發碰撞檢測
+      const changedItem = updatedItems.find((item) => item.id === itemId);
+      if (changedItem && changedItem.scheduleDate && changedItem.startHour !== undefined && changedItem.lineId) {
+        return rearrangeLineItems(updatedItems, changedItem.lineId, changedItem.scheduleDate);
+      }
+      return updatedItems;
+    });
   };
 
   // 未排程項目
@@ -1667,8 +1683,11 @@ function fromAbsoluteHour(absoluteHour: number): { scheduleDate: string; startHo
     absoluteHour = 0;
   }
   
+  // 向上取整以避免重疊（如果結束時間是 2.5，下一張卡片應該從 3 開始）
+  const ceiledHour = Math.ceil(absoluteHour);
+  
   const baseDate = new Date('2020-01-01T00:00:00Z');
-  const totalMilliseconds = absoluteHour * 60 * 60 * 1000;
+  const totalMilliseconds = ceiledHour * 60 * 60 * 1000;
   const newDate = new Date(baseDate.getTime() + totalMilliseconds);
   
   // 使用 UTC 時間避免時區問題
@@ -1679,6 +1698,35 @@ function fromAbsoluteHour(absoluteHour: number): { scheduleDate: string; startHo
   const startHour = newDate.getUTCHours();
   
   return { scheduleDate, startHour };
+}
+
+// 修正所有產線的重疊卡片（用於資料載入時）
+function fixAllOverlaps(items: ScheduleItem[]): ScheduleItem[] {
+  // 取得所有有排程的產線 ID
+  const lineIds = new Set(
+    items
+      .filter((item) => item.lineId && item.scheduleDate && item.startHour !== undefined)
+      .map((item) => item.lineId)
+  );
+  
+  let result = items;
+  
+  // 對每條產線執行碰撞檢測
+  for (const lineId of lineIds) {
+    result = rearrangeLineItems(result, lineId, '');
+  }
+  
+  // 檢查是否有修正
+  const hasChanges = result.some((item, index) => {
+    const original = items[index];
+    return item.scheduleDate !== original.scheduleDate || item.startHour !== original.startHour;
+  });
+  
+  if (hasChanges) {
+    console.log('🔧 已修正重疊的卡片位置');
+  }
+  
+  return result;
 }
 
 // 重新排列同產線的所有卡片，確保不重疊（考慮跨日）
@@ -1705,20 +1753,32 @@ function rearrangeLineItems(
 
   // 重新計算每張卡片的開始時間，確保不重疊
   const adjustedItems: Record<string, { scheduleDate: string; startHour: number }> = {};
-  let currentEnd = 0;
+  
+  // 使用第一張卡片的結束時間作為初始值（向上取整避免重疊）
+  let currentEnd = Math.ceil(lineItems[0].absoluteStart + lineItems[0].duration);
 
-  for (const item of lineItems) {
+  // 從第二張卡片開始檢查
+  for (let i = 1; i < lineItems.length; i++) {
+    const item = lineItems[i];
     const itemStart = item.absoluteStart;
     
-    // 如果卡片開始時間早於當前結束時間，需要調整
+    // 如果卡片開始時間早於或等於當前結束時間，表示有重疊，需要調整
+    // 使用 <= 而不是 < 來確保沒有任何重疊
     if (itemStart < currentEnd) {
+      // 將此卡片移動到 currentEnd 位置
       const newPosition = fromAbsoluteHour(currentEnd);
       adjustedItems[item.id] = newPosition;
-      currentEnd = currentEnd + item.duration;
+      // 更新 currentEnd 為調整後的結束時間（向上取整）
+      currentEnd = Math.ceil(currentEnd + item.duration);
     } else {
-      // 不需要調整，但更新 currentEnd
-      currentEnd = itemStart + item.duration;
+      // 不需要調整，更新 currentEnd 為此卡片的結束時間（向上取整）
+      currentEnd = Math.ceil(itemStart + item.duration);
     }
+  }
+
+  // 如果沒有需要調整的卡片，直接返回原陣列
+  if (Object.keys(adjustedItems).length === 0) {
+    return items;
   }
 
   return items.map((item) => {

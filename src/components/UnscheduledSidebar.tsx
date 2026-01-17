@@ -130,6 +130,7 @@ export default function UnscheduledSidebar({
             <div className="w-full">
               <AddCardForm 
                 onAdd={onAddItem}
+                getSuggestedSchedule={getSuggestedSchedule}
               />
             </div>
           )}
@@ -140,6 +141,7 @@ export default function UnscheduledSidebar({
               <AddNGColorForm 
                 onAdd={onAddItem} 
                 existingBatchIds={existingBatchIds}
+                getSuggestedSchedule={getSuggestedSchedule}
               />
             </div>
           )}

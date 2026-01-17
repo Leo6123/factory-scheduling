@@ -1,18 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ScheduleItem } from "@/types/schedule";
 import { UNSCHEDULED_LANE } from "@/constants/productionLines";
 
 interface AddCardFormProps {
   onAdd: (item: ScheduleItem) => void;
+  getSuggestedSchedule?: (materialNumber: string) => string[] | null;  // 取得建議排程
 }
 
-export default function AddCardForm({ onAdd }: AddCardFormProps) {
+export default function AddCardForm({ onAdd, getSuggestedSchedule }: AddCardFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [materialNumber, setMaterialNumber] = useState("");
   const [batchNumber, setBatchNumber] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [suggestedSchedule, setSuggestedSchedule] = useState<string[] | null>(null);
+
+  // 當 Material Number 改變時，查詢建議排程
+  useEffect(() => {
+    if (materialNumber.trim() && getSuggestedSchedule) {
+      const suggested = getSuggestedSchedule(materialNumber.trim());
+      setSuggestedSchedule(suggested);
+    } else {
+      setSuggestedSchedule(null);
+    }
+  }, [materialNumber, getSuggestedSchedule]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +101,12 @@ export default function AddCardForm({ onAdd }: AddCardFormProps) {
             className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded
                        text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
           />
+          {/* 顯示建議排程 */}
+          {suggestedSchedule && suggestedSchedule.length > 0 && (
+            <div className="mt-1 text-xs text-blue-400">
+              建議排程: {suggestedSchedule.join(", ")}
+            </div>
+          )}
         </div>
 
         {/* 批號 */}
