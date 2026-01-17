@@ -1703,11 +1703,12 @@ function fromAbsoluteHour(absoluteHour: number): { scheduleDate: string; startHo
 // 修正所有產線的重疊卡片（用於資料載入時）
 function fixAllOverlaps(items: ScheduleItem[]): ScheduleItem[] {
   // 取得所有有排程的產線 ID
-  const lineIds = new Set(
+  const lineIdSet = new Set(
     items
       .filter((item) => item.lineId && item.scheduleDate && item.startHour !== undefined)
       .map((item) => item.lineId)
   );
+  const lineIds = Array.from(lineIdSet);
   
   let result = items;
   
