@@ -431,7 +431,13 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 計算每條產線的月產能
   const getMonthlyCapacity = (lineId: string): number => {
     const config = lineConfigs[lineId];
-    if (!config || config.avgOutput <= 0) return 0;
+    if (!config) return 0;
+    // 如果設定了 monthlyCapacity，優先使用此值
+    if (config.monthlyCapacity !== undefined && config.monthlyCapacity > 0) {
+      return config.monthlyCapacity;
+    }
+    // 否則使用原來的計算方式（根據 avgOutput 計算）
+    if (config.avgOutput <= 0) return 0;
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const monthlyHours = HOURS_PER_DAY * daysInMonth;
     return Math.round(config.avgOutput * monthlyHours * WORKING_DAYS_RATIO);
