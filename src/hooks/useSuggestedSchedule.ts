@@ -51,14 +51,19 @@ async function loadSuggestedSchedulesFromDB(): Promise<SuggestedScheduleMap> {
     }
     
     console.log('🔍 已登入，從 Supabase 載入建議排程...');
+    console.log('📡 Session user:', sessionData.session.user.email);
     
-    const { data, error } = await supabase
+    const { data, error, status } = await supabase
       .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
       .select('*')
       .order('last_updated', { ascending: false });
 
+    console.log('📡 Supabase 回應 - status:', status, ', data count:', data?.length, ', error:', error);
+
     if (error) {
-      console.error('載入建議排程失敗:', error);
+      console.error('❌ 載入建議排程失敗:', error);
+      console.error('錯誤代碼:', error.code);
+      console.error('錯誤訊息:', error.message);
       // 如果錯誤是因為表不存在，使用 localStorage
       if (error.message && (error.message.includes('does not exist') || error.message.includes('relation'))) {
         console.warn('⚠️ 資料庫表不存在，使用 localStorage');
@@ -67,8 +72,21 @@ async function loadSuggestedSchedulesFromDB(): Promise<SuggestedScheduleMap> {
     }
 
     if (!data || !Array.isArray(data)) {
-      console.warn('資料格式不正確，使用 localStorage');
+      console.warn('⚠️ 資料格式不正確，使用 localStorage');
       return loadFromLocalStorage();
+    }
+    
+    // 如果資料庫為空，嘗試從 localStorage 載入
+    if (data.length === 0) {
+      console.log('📭 資料庫中沒有建議排程資料');
+      const localData = loadFromLocalStorage();
+      const localCount = Object.keys(localData).length;
+      if (localCount > 0) {
+        console.log(`📦 使用 localStorage 資料，共 ${localCount} 筆`);
+        return localData;
+      }
+      console.log('📭 localStorage 也沒有資料');
+      return {};
     }
 
     // 轉換資料庫格式為應用格式
@@ -292,6 +310,8 @@ export function useSuggestedSchedule() {
   // 匯入建議排程（覆蓋現有數據）
   const importSchedules = useCallback(async (schedules: SuggestedSchedule[]) => {
     setError(null);
+    console.log('📥 開始匯入建議排程，共', schedules.length, '筆');
+    
     try {
       // 先更新本地狀態（立即反映在 UI 上）
       const newMap: SuggestedScheduleMap = {};
@@ -299,20 +319,24 @@ export function useSuggestedSchedule() {
         newMap[schedule.materialNumber] = schedule;
       });
       setScheduleMap(newMap);
+      console.log('✅ 已更新本地狀態');
       
-      // 然後保存到資料庫（非阻塞）
+      // 然後保存到資料庫
+      console.log('📤 開始儲存到 Supabase...');
       const success = await saveSuggestedSchedulesToDB(schedules);
       
       if (success) {
+        console.log('✅ 建議排程已成功儲存到 Supabase');
         return true;
       } else {
         // 即使 Supabase 失敗，localStorage 已保存，所以仍然返回 true
         // 但顯示警告訊息
+        console.warn('⚠️ Supabase 儲存失敗，但 localStorage 已保存');
         setError('資料已儲存到本地，但 Supabase 儲存失敗（請檢查網路連線）');
         return true; // 因為 localStorage 已保存，所以返回 true
       }
     } catch (err) {
-      console.error('匯入建議排程異常:', err);
+      console.error('❌ 匯入建議排程異常:', err);
       setError(err instanceof Error ? err.message : '匯入失敗');
       // 即使異常，localStorage 可能已保存，所以返回 true
       return true;
