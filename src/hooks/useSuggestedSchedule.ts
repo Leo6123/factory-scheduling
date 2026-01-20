@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { SuggestedSchedule, SuggestedScheduleMap } from '@/types/suggestedSchedule';
 import { supabase, TABLES } from '@/lib/supabase';
 
@@ -43,6 +43,15 @@ async function loadSuggestedSchedulesFromDB(): Promise<SuggestedScheduleMap> {
   }
 
   try {
+    // 先檢查是否有有效的 session
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      console.log('⚠️ 尚未登入，從 localStorage 載入建議排程');
+      return loadFromLocalStorage();
+    }
+    
+    console.log('🔍 已登入，從 Supabase 載入建議排程...');
+    
     const { data, error } = await supabase
       .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
       .select('*')
@@ -235,21 +244,39 @@ export function useSuggestedSchedule() {
   const [scheduleMap, setScheduleMap] = useState<SuggestedScheduleMap>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false); // 追蹤是否已載入過
 
   // 載入資料
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forceReload = false) => {
+    // 如果已經載入過且不是強制重新載入，且已有資料，則跳過
+    if (hasLoadedRef.current && !forceReload && Object.keys(scheduleMap).length > 0) {
+      console.log('📦 建議排程已載入，跳過重複載入');
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
+    console.log('🔄 開始載入建議排程...');
+    
     try {
       const data = await loadSuggestedSchedulesFromDB();
+      const dataCount = Object.keys(data).length;
+      console.log(`✅ 成功載入建議排程，共 ${dataCount} 筆`);
       setScheduleMap(data);
+      hasLoadedRef.current = true;
     } catch (err) {
+      console.error('❌ 載入建議排程失敗:', err);
       setError(err instanceof Error ? err.message : '載入資料失敗');
-      setScheduleMap(loadFromLocalStorage());
+      // 嘗試從 localStorage 載入
+      const localData = loadFromLocalStorage();
+      const localCount = Object.keys(localData).length;
+      console.log(`⚠️ 使用 localStorage 備份，共 ${localCount} 筆`);
+      setScheduleMap(localData);
+      hasLoadedRef.current = true;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [scheduleMap]);
 
   // 匯入建議排程（覆蓋現有數據）
   const importSchedules = useCallback(async (schedules: SuggestedSchedule[]) => {
@@ -318,10 +345,12 @@ export function useSuggestedSchedule() {
     return null;
   }, [scheduleMap]);
 
-  // 初始化載入
+  // 初始化載入 - 僅在組件首次掛載時執行
   useEffect(() => {
+    console.log('🚀 useSuggestedSchedule 初始化');
     loadData();
-  }, [loadData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 空依賴陣列，確保只執行一次
 
   return {
     scheduleMap,

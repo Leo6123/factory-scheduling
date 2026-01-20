@@ -297,6 +297,20 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   // 建議排程（系統啟動時自動從資料庫載入）
   const { getSuggestedSchedule, importSchedules, loadData: reloadSuggestedSchedule } = useSuggestedSchedule();
   
+  // 用戶登入後重新載入建議排程
+  const hasLoadedSuggestedRef = useRef(false);
+  useEffect(() => {
+    // 當用戶登入完成後，重新載入建議排程
+    if (user && !loading && !hasLoadedSuggestedRef.current) {
+      console.log('👤 用戶已登入，重新載入建議排程...');
+      hasLoadedSuggestedRef.current = true;
+      // 延遲執行，確保 Supabase session 已完全建立
+      setTimeout(() => {
+        reloadSuggestedSchedule(true); // 強制重新載入
+      }, 500);
+    }
+  }, [user, loading, reloadSuggestedSchedule]);
+  
   // 即時同步排程資料（跨分頁/跨裝置同步）
   // 使用 ref 來追蹤是否正在應用 Realtime 變更，避免循環保存
   const isApplyingRealtimeChangeRef = useRef(false);

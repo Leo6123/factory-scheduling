@@ -5,8 +5,37 @@ export interface QCData {
   qcResult?: string;         // QC結果
 }
 
+// 從 Supabase 獲取 access token（用於 API 身份驗證）
+async function getSupabaseAccessToken(): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return null; // 服務端不需要 token
+  }
+
+  try {
+    // 動態導入 supabase 客戶端（避免循環依賴）
+    const { supabase } = await import('@/lib/supabase');
+    
+    if (!supabase) {
+      return null;
+    }
+
+    // 獲取當前 session
+    const { data: { session }, error } = await supabase.auth.getSession();
+
+    if (error || !session || !session.access_token) {
+      return null;
+    }
+
+    return session.access_token;
+  } catch (error) {
+    console.error('❌ 獲取 Supabase token 失敗:', error);
+    return null;
+  }
+}
+
 // 從 Google Sheets 讀取 QC 資料
 // 現在使用 Next.js API Route（伺服器端），不再需要 API Key
+// 新增：需要身份驗證才能存取 API
 export async function fetchQCDataFromGoogleSheets(
   spreadsheetId: string,
   apiKey?: string  // 保留參數以向後兼容，但不再使用
@@ -23,7 +52,22 @@ export async function fetchQCDataFromGoogleSheets(
         // API Key 不再暴露在客戶端
         const apiUrl = `/api/google-sheets?spreadsheetId=${encodeURIComponent(spreadsheetId)}&sheetName=${encodeURIComponent(sheetName)}&range=D2:H`;
         
-        const response = await fetch(apiUrl);
+        // 獲取 Supabase access token 用於 API 身份驗證
+        const authToken = await getSupabaseAccessToken();
+        
+        // 發送請求，包含 Authorization header（如果有的話）
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`;
+        }
+        
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers,
+        });
 
         if (!response.ok) {
           lastError = new Error(`無法讀取 Google Sheets: ${response.statusText}`);

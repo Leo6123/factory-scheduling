@@ -1,13 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyApiAuth } from '@/lib/apiAuth';
 
 // Google Sheets API 路由
 // 將 Google API Key 移到伺服器端，避免暴露在客戶端
+// 新增：API 路由身份驗證
 
 // 明確指定為動態路由（因為使用了 searchParams）
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    // ============================================
+    // 身份驗證檢查
+    // ============================================
+    const auth = await verifyApiAuth(request);
+    
+    if (auth.error) {
+      console.warn('❌ [API] 未授權存取 Google Sheets API:', {
+        status: auth.error.status,
+        message: auth.error.message,
+      });
+      
+      return NextResponse.json(
+        { 
+          error: auth.error.message,
+          code: 'UNAUTHORIZED'
+        },
+        { status: auth.error.status }
+      );
+    }
+
+    // 驗證通過，記錄用戶資訊（僅記錄 email，不記錄完整 token）
+    console.log('✅ [API] 授權用戶存取 Google Sheets API:', {
+      userId: auth.user.id,
+      userEmail: auth.user.email,
+    });
+
+    // ============================================
+    // API 業務邏輯
+    // ============================================
     const searchParams = request.nextUrl.searchParams;
     const spreadsheetId = searchParams.get('spreadsheetId');
     const sheetName = searchParams.get('sheetName') || 'Report';
