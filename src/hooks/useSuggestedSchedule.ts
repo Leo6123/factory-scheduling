@@ -282,9 +282,40 @@ export function useSuggestedSchedule() {
   }, []);
 
   // 根據 Material Number 取得建議排程
+  // 支援模糊匹配：如果完全匹配失敗，嘗試部分匹配（包含關係）
   const getSuggestedSchedule = useCallback((materialNumber: string): string[] | null => {
-    const schedule = scheduleMap[materialNumber];
-    return schedule ? schedule.suggestedLines : null;
+    if (!materialNumber) return null;
+    
+    // 1. 完全匹配
+    const exactMatch = scheduleMap[materialNumber];
+    if (exactMatch) return exactMatch.suggestedLines;
+    
+    // 2. 部分匹配：檢查 materialNumber 是否包含建議排程中的任何 key
+    //    例如：卡片的 "AB54425688" 包含建議排程的 "54425688"
+    const materialNumberLower = materialNumber.toLowerCase();
+    for (const [key, value] of Object.entries(scheduleMap)) {
+      const keyLower = key.toLowerCase();
+      // 檢查是否包含（任一方向）
+      if (materialNumberLower.includes(keyLower) || keyLower.includes(materialNumberLower)) {
+        return value.suggestedLines;
+      }
+    }
+    
+    // 3. 數字部分匹配：提取數字部分進行比對
+    const materialNumbers = materialNumber.match(/\d+/g);
+    if (materialNumbers) {
+      for (const num of materialNumbers) {
+        if (num.length >= 6) { // 至少 6 位數字才進行匹配
+          for (const [key, value] of Object.entries(scheduleMap)) {
+            if (key.includes(num)) {
+              return value.suggestedLines;
+            }
+          }
+        }
+      }
+    }
+    
+    return null;
   }, [scheduleMap]);
 
   // 初始化載入
