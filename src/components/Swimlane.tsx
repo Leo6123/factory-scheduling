@@ -262,8 +262,22 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       const saved = localStorage.getItem('factory_line_configs');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // 合併保存的設定和預設設定，確保所有產線都有設定
-        setLineConfigs({ ...DEFAULT_LINE_CONFIGS, ...parsed });
+        // 合併保存的設定和預設設定
+        // monthlyCapacity 優先使用 DEFAULT_LINE_CONFIGS 的值（固定產能）
+        // avgOutput 優先使用 localStorage 的值（用戶可調整）
+        const merged: Record<string, LineConfig> = {};
+        for (const key of Object.keys(DEFAULT_LINE_CONFIGS)) {
+          const defaultConfig = DEFAULT_LINE_CONFIGS[key];
+          const savedConfig = parsed[key];
+          merged[key] = {
+            ...defaultConfig,
+            // avgOutput 優先使用 localStorage 的值
+            avgOutput: savedConfig?.avgOutput ?? defaultConfig.avgOutput,
+            // monthlyCapacity 固定使用 DEFAULT_LINE_CONFIGS 的值
+            monthlyCapacity: defaultConfig.monthlyCapacity,
+          };
+        }
+        setLineConfigs(merged);
       }
     } catch (error) {
       console.error('載入產線設定失敗:', error);
