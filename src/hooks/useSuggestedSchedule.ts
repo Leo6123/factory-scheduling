@@ -266,21 +266,24 @@ export function useSuggestedSchedule() {
 
   // 載入資料
   const loadData = useCallback(async (forceReload = false) => {
-    // 防止重複載入
-    if (isLoadingRef.current) {
-      console.log('⏳ 建議排程正在載入中，跳過');
+    console.log('📞 [建議排程] loadData 被呼叫, forceReload:', forceReload, ', isLoadingRef:', isLoadingRef.current);
+    
+    // 防止重複載入（但 forceReload 時強制執行）
+    if (isLoadingRef.current && !forceReload) {
+      console.log('⏳ [建議排程] 正在載入中，跳過');
       return;
     }
     
     isLoadingRef.current = true;
     setIsLoading(true);
     setError(null);
-    console.log('🔄 開始載入建議排程... (forceReload:', forceReload, ')');
+    console.log('🔄 [建議排程] 開始從資料庫載入...');
     
     try {
+      console.log('📡 [建議排程] 呼叫 loadSuggestedSchedulesFromDB...');
       const data = await loadSuggestedSchedulesFromDB();
       const dataCount = Object.keys(data).length;
-      console.log(`✅ 成功載入建議排程，共 ${dataCount} 筆`);
+      console.log(`✅ [建議排程] 載入完成，共 ${dataCount} 筆`);
       
       if (dataCount > 0) {
         setScheduleMap(data);
@@ -382,12 +385,18 @@ export function useSuggestedSchedule() {
 
   // 初始化載入 - 僅在組件首次掛載時執行
   useEffect(() => {
-    console.log('🚀 useSuggestedSchedule 初始化，準備載入建議排程...');
+    console.log('🚀 [建議排程] Hook 初始化');
+    
     // 延遲載入，確保 Supabase 認證已完成
     const timer = setTimeout(() => {
+      console.log('⏰ [建議排程] 延遲時間到，開始載入...');
       loadData();
-    }, 100);
-    return () => clearTimeout(timer);
+    }, 500); // 增加延遲到 500ms，確保認證完成
+    
+    return () => {
+      console.log('🧹 [建議排程] 清理 timer');
+      clearTimeout(timer);
+    };
   }, [loadData]);
 
   return {
