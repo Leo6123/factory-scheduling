@@ -294,8 +294,8 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   // googleApiKey 參數已移除，不再從客戶端傳遞（API Route 會從伺服器端環境變數獲取）
   const { getBatchQCStatus, qcData, isLoading: isQCLoading, error: qcError } = useQCStatus(scheduleItems, googleSheetId);
   
-  // 建議排程
-  const { getSuggestedSchedule, importSchedules } = useSuggestedSchedule();
+  // 建議排程（系統啟動時自動從資料庫載入）
+  const { getSuggestedSchedule, importSchedules, loadData: reloadSuggestedSchedule } = useSuggestedSchedule();
   
   // 即時同步排程資料（跨分頁/跨裝置同步）
   // 使用 ref 來追蹤是否正在應用 Realtime 變更，避免循環保存
@@ -765,6 +765,14 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     
     // 標記正在匯入，避免 useEffect 同步覆蓋
     setIsImporting(true);
+    
+    // 匯入訂單前，先重新載入建議排程資料（確保比對最新資料）
+    try {
+      await reloadSuggestedSchedule();
+      console.log('✅ 已重新載入建議排程資料');
+    } catch (err) {
+      console.warn('⚠️ 重新載入建議排程失敗，使用現有資料:', err);
+    }
     
     try {
       // 使用函數式更新確保獲取最新的 localItems
