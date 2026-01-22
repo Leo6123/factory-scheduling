@@ -85,40 +85,15 @@ async function loadSuggestedSchedulesFromDB(): Promise<SuggestedScheduleMap> {
     }
     
     const data = allData;
-    const error = null;
-    const status = 200;
 
-    console.log('📡 Supabase 回應 - status:', status, ', data count:', data?.length, ', error:', error);
+    console.log('📡 Supabase 回應 - data count:', data?.length);
 
-    if (error) {
-      console.error('❌ 載入建議排程失敗:', error);
-      console.error('錯誤代碼:', error.code);
-      console.error('錯誤訊息:', error.message);
-      // 如果錯誤是因為表不存在，使用 localStorage
-      if (error.message && (error.message.includes('does not exist') || error.message.includes('relation'))) {
-        console.warn('⚠️ 資料庫表不存在，使用 localStorage');
-      }
-      return loadFromLocalStorage();
-    }
-
-    if (!data || !Array.isArray(data)) {
-      console.warn('⚠️ 資料格式不正確，使用 localStorage');
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      // 如果分頁載入失敗或沒有資料，使用 localStorage
+      console.warn('⚠️ 資料庫載入失敗或為空，使用 localStorage');
       return loadFromLocalStorage();
     }
     
-    // 如果資料庫為空，嘗試從 localStorage 載入
-    if (data.length === 0) {
-      console.log('📭 資料庫中沒有建議排程資料');
-      const localData = loadFromLocalStorage();
-      const localCount = Object.keys(localData).length;
-      if (localCount > 0) {
-        console.log(`📦 使用 localStorage 資料，共 ${localCount} 筆`);
-        return localData;
-      }
-      console.log('📭 localStorage 也沒有資料');
-      return {};
-    }
-
     // 轉換資料庫格式為應用格式
     const schedules: SuggestedSchedule[] = data.map((row: any) => {
       let suggestedLines: string[] = [];
