@@ -53,10 +53,40 @@ async function loadSuggestedSchedulesFromDB(): Promise<SuggestedScheduleMap> {
     console.log('🔍 已登入，從 Supabase 載入建議排程...');
     console.log('📡 Session user:', sessionData.session.user.email);
     
-    const { data, error, status } = await supabase
-      .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
-      .select('*')
-      .order('last_updated', { ascending: false });
+    // 使用分頁載入所有資料（Supabase 預設限制 1000 筆）
+    let allData: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const { data: pageData, error: pageError } = await supabase
+        .from(TABLES.SUGGESTED_SCHEDULES || 'suggested_schedules')
+        .select('*')
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+      
+      if (pageError) {
+        console.error(`❌ 載入第 ${page + 1} 頁失敗:`, pageError);
+        break;
+      }
+      
+      if (pageData && pageData.length > 0) {
+        allData = allData.concat(pageData);
+        console.log(`📄 載入第 ${page + 1} 頁，${pageData.length} 筆，累計 ${allData.length} 筆`);
+        
+        if (pageData.length < pageSize) {
+          hasMore = false; // 最後一頁
+        } else {
+          page++;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+    
+    const data = allData;
+    const error = null;
+    const status = 200;
 
     console.log('📡 Supabase 回應 - status:', status, ', data count:', data?.length, ', error:', error);
 
