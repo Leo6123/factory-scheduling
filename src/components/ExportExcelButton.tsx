@@ -48,27 +48,15 @@ function getBlocksForExport(
     const startHour = item.startHour;
     const endHour = startHour + duration;
 
-    // 格式化日期時間 (格式: 2025/11/26 09:42:45 AM)
+    // 格式化日期 (格式: 2025/12/5)
     const formatDateTime = (dateStr: string, hour: number): string => {
       const date = new Date(dateStr + "T00:00:00"); // 確保使用本地時間
-      const h = Math.floor(hour) % 24;
-      const m = Math.round((hour - Math.floor(hour)) * 60);
-      const s = 45; // 秒數設為 45 (根據範例)
-      
-      // 轉換為 12 小時制
-      let displayHour = h;
-      let ampm = "AM";
-      if (h >= 12) {
-        ampm = "PM";
-        if (h > 12) displayHour = h - 12;
-      }
-      if (h === 0) displayHour = 12;
       
       const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
+      const month = date.getMonth() + 1; // 不補零
+      const day = date.getDate(); // 不補零
       
-      return `${year}/${month}/${day}  ${String(displayHour).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} ${ampm}`;
+      return `${year}/${month}/${day}`;
     };
 
     // 計算開始日期時間
@@ -197,8 +185,8 @@ export default function ExportExcelButton({
       { wch: 15 }, // A: Scheduled status
       { wch: 18 }, // B: PO status
       { wch: 15 }, // C: Production line
-      { wch: 22 }, // D: Start
-      { wch: 22 }, // E: End
+      { wch: 12 }, // D: Start (只有日期)
+      { wch: 12 }, // E: End (只有日期)
       { wch: 12 }, // F: Status
       { wch: 15 }, // G: PO number
       { wch: 18 }, // H: Material number
