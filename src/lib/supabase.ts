@@ -95,6 +95,7 @@ export function scheduleItemToDB(item: ScheduleItem, includeMaterialReadyDate: b
     sales_document: item.salesDocument || null,
     remark: item.remark || null,
     output_rate: item.outputRate ?? null, // 出量 (kg/h)，預設 50
+    release_date: item.releaseDate || null, // Release date
     // updated_at 由資料庫觸發器自動處理，不需要手動設定
   };
   
@@ -138,6 +139,7 @@ export function dbToScheduleItem(row: any): ScheduleItem {
     salesDocument: row.sales_document || undefined,
     remark: row.remark || undefined,
     outputRate: row.output_rate ?? undefined, // 出量 (kg/h)，預設 50
+    releaseDate: row.release_date || undefined, // Release date
     recipeItems: row.recipe_items 
       ? (Array.isArray(row.recipe_items) 
           ? row.recipe_items 

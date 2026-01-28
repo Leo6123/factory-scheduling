@@ -40,6 +40,7 @@ export interface ScheduleItem {
   salesDocument?: string;        // Sales document 數字
   recipeItems?: import('./recipe').RecipeItem[];  // 配方項目列表
   remark?: string;              // Remark 備註
+  releaseDate?: string;         // Release date (YYYY-MM-DD)
 }
 
 // 預設出量 (kg/h)

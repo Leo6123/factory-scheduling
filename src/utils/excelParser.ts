@@ -239,6 +239,12 @@ export async function parseExcelFile(
           const salesDocValue = getFieldValue(row, "Sales document", "Sales doc", "Sales d");
           const salesDocument = salesDocValue ? String(salesDocValue).trim() : undefined;
           
+          // 讀取 Release date 欄位
+          const releaseDateValue = getFieldValue(row, "Release date", "Release Date", "ReleaseDate");
+          const releaseDate = releaseDateValue 
+            ? excelDateToString(releaseDateValue as number | string | Date | undefined)
+            : undefined;
+          
           // 讀取 Remark 欄位
           // 調試：先檢查 Excel 中所有欄位名稱（只輸出一次）
           if (index === 0) {
@@ -303,6 +309,7 @@ export async function parseExcelFile(
             salesDocument,
             recipeItems, // 加入配方資料
             remark, // 加入 Remark
+            releaseDate, // 加入 Release date
           });
         }
         

@@ -85,6 +85,17 @@ function getBlocksForExport(
       return "00" + numStr;
     };
 
+    // 格式化 Release date (格式: 2025/1/16)
+    const formatReleaseDate = (dateStr?: string): string => {
+      if (!dateStr) return "";
+      const date = new Date(dateStr + "T00:00:00");
+      if (isNaN(date.getTime())) return "";
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      return `${year}/${month}/${day}`;
+    };
+
     rows.push({
       scheduledStatus: "Scheduled",                    // A
       poStatus: "Released",                           // B
@@ -100,6 +111,7 @@ function getBlocksForExport(
       qtyReleased: item.quantity,                     // L
       custNum: item.customer || "",                  // M
       orderNum: formatOrderNum(item.salesDocument),  // N
+      releaseDate: formatReleaseDate(item.releaseDate), // O
     });
   }
 
@@ -132,6 +144,7 @@ interface ExportRow {
   qtyReleased: number;           // L: Qty released
   custNum: string;               // M: Cust num
   orderNum: string;              // N: Order num
+  releaseDate: string;           // O: Release date
 }
 
 export default function ExportExcelButton({
@@ -175,6 +188,7 @@ export default function ExportExcelButton({
       "Qty released": row.qtyReleased,              // L
       "Cust num": row.custNum,                       // M
       "Order num": row.orderNum,                     // N
+      "Release date": row.releaseDate,              // O
     }));
 
     // 建立工作表
@@ -196,6 +210,7 @@ export default function ExportExcelButton({
       { wch: 12 }, // L: Qty released
       { wch: 12 }, // M: Cust num
       { wch: 15 }, // N: Order num
+      { wch: 12 }, // O: Release date
     ];
 
     // 建立工作簿
