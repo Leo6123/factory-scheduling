@@ -17,28 +17,47 @@ const CLEANING_OPTIONS: { type: CleaningProcessType; label: string }[] = [
 
 export default function CleaningProcessForm({ onAdd }: CleaningProcessFormProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedType, setSelectedType] = useState<CleaningProcessType>('A');
+  const [selectedType, setSelectedType] = useState<CleaningProcessType | 'CUSTOM'>('A');
+  const [customMinutes, setCustomMinutes] = useState<string>('');
 
   const handleSubmit = () => {
-    const duration = CLEANING_PROCESS_DURATION[selectedType];
+    let duration: number;
+    let typeLabel: string;
+    
+    if (selectedType === 'CUSTOM') {
+      const minutes = parseInt(customMinutes);
+      if (isNaN(minutes) || minutes <= 0) {
+        alert('請輸入有效的分鐘數（必須大於 0）');
+        return;
+      }
+      duration = minutes;
+      typeLabel = '自訂';
+    } else {
+      duration = CLEANING_PROCESS_DURATION[selectedType];
+      typeLabel = selectedType;
+    }
+    
     const now = new Date();
-    const id = `CLEAN-${selectedType}-${now.getTime()}`;
+    const id = `CLEAN-${selectedType === 'CUSTOM' ? 'CUSTOM' : selectedType}-${now.getTime()}`;
     
     // 清機流程的 quantity 代表時長 (分鐘)，用於計算時間軸上的寬度
     const newItem: ScheduleItem = {
       id,
-      productName: `清機流程 ${selectedType}`,
+      productName: `清機流程 ${typeLabel}`,
       materialDescription: `${duration} 分鐘`,
       batchNumber: id,
       quantity: duration, // 以分鐘為單位
       deliveryDate: now.toISOString().split('T')[0],
       lineId: "UNSCHEDULED",
       isCleaningProcess: true,
-      cleaningType: selectedType,
+      cleaningType: selectedType === 'CUSTOM' ? undefined : selectedType,
     };
 
     onAdd(newItem);
     setIsOpen(false);
+    // 重置狀態
+    setSelectedType('A');
+    setCustomMinutes('');
   };
 
   if (!isOpen) {
@@ -84,6 +103,33 @@ export default function CleaningProcessForm({ onAdd }: CleaningProcessFormProps)
             {option.label}
           </button>
         ))}
+        
+        {/* 自訂時間選項 */}
+        <button
+          onClick={() => setSelectedType('CUSTOM')}
+          className={`px-3 py-2 text-sm rounded-lg text-left transition-colors
+                     ${selectedType === 'CUSTOM'
+                       ? "bg-cyan-500 text-white"
+                       : "bg-gray-700/50 text-gray-300 hover:bg-gray-700"}`}
+        >
+          自訂時間
+        </button>
+        
+        {/* 自訂時間輸入框 */}
+        {selectedType === 'CUSTOM' && (
+          <div className="px-3 py-2 bg-gray-800/50 rounded-lg border border-cyan-500/30">
+            <label className="block text-xs text-gray-400 mb-1">輸入分鐘數</label>
+            <input
+              type="number"
+              min="1"
+              value={customMinutes}
+              onChange={(e) => setCustomMinutes(e.target.value)}
+              placeholder="例如: 240"
+              className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-600 rounded text-white
+                         focus:outline-none focus:border-cyan-500"
+            />
+          </div>
+        )}
       </div>
 
       {/* 確認按鈕 */}

@@ -191,6 +191,7 @@ export default function SaveSnapshotButton({
       
       // 同時保存到 Supabase 資料庫
       console.log('💾 開始保存到 Supabase，資料筆數:', scheduleItems.length);
+      console.log('📋 保存的項目 ID 列表:', scheduleItems.map(item => item.id).join(', '));
       const { saveScheduleItemsToDB } = await import('@/hooks/useScheduleData');
       const dbSuccess = await saveScheduleItemsToDB(scheduleItems);
       

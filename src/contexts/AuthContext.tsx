@@ -33,8 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return 'viewer';
     }
 
-    // 設定超時保護（2 秒，更快響應，避免阻塞）
-    const TIMEOUT_MS = 2000;
+    // 設定超時保護（5 秒，給資料庫查詢足夠時間）
+    const TIMEOUT_MS = 5000;
     
     try {
       console.log('🔍 [Auth] 開始獲取用戶角色，用戶 ID:', supabaseUser.id, 'Email:', supabaseUser.email);
@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 創建超時 Promise
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
-          reject(new Error('獲取用戶角色超時（2 秒），使用默認角色'));
+          reject(new Error('獲取用戶角色超時（5 秒），使用默認角色'));
         }, TIMEOUT_MS);
       });
 
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('❌ [Auth] 獲取用戶角色異常:', error.message || error);
       // 發生異常時（包括超時），立即返回默認角色 viewer（更安全）
       if (error.message?.includes('超時')) {
-        console.warn('⚠️ [Auth] 獲取角色超時（2 秒），使用默認角色 viewer');
+        console.warn('⚠️ [Auth] 獲取角色超時（5 秒），使用默認角色 viewer');
         console.warn('💡 這可能是因為資料庫查詢太慢，請檢查 Supabase 狀態');
       }
       return 'viewer'; // 更安全的默認角色（權限更少）
@@ -129,8 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 設定超時保護（10 秒，縮短總超時時間）
-    const TIMEOUT_MS = 10000;
+    // 設定超時保護（15 秒，給重試機制足夠時間）
+    const TIMEOUT_MS = 15000;
     let timeoutId: NodeJS.Timeout | null = null;
     let isCompleted = false;
 
@@ -155,10 +155,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }, TIMEOUT_MS);
       });
 
-      // 獲取用戶角色（帶超時保護，getUserRole 內部已有 2 秒超時）
-      const rolePromise = getUserRole(supabaseUser);
+      // 獲取用戶角色（帶重試機制和超時保護）
+      const fetchRoleWithRetry = async (retries = 2): Promise<UserRole> => {
+        try {
+          const role = await Promise.race([
+            getUserRole(supabaseUser),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error('獲取角色超時')), 3000); // 3 秒超時
+            }),
+          ]) as UserRole;
+          return role;
+        } catch (err) {
+          if (retries > 0) {
+            console.warn(`⚠️ [updateUser] 獲取角色失敗，剩餘重試次數: ${retries}，1 秒後重試...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return fetchRoleWithRetry(retries - 1);
+          }
+          throw err;
+        }
+      };
+      
       let role = await Promise.race([
-        rolePromise,
+        fetchRoleWithRetry(),
         timeoutPromise,
       ]) as UserRole;
 
@@ -275,13 +293,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           console.log('✅ 找到現有會話，用戶:', session.user.email);
           
-          // 立即設定 session，但不立即設置用戶（等待角色查詢完成）
-          // 這樣可以確保角色是正確的，避免暫時顯示錯誤的角色
+          // 立即設定 session
           setSession(session);
-          setLoading(false); // 立即停止 loading，讓用戶可以進入系統
           
-          // 立即獲取角色（不阻塞 UI，但確保角色正確）
-          getUserRole(session.user)
+          // 獲取角色（帶重試機制，確保角色正確）
+          const fetchRoleWithRetry = async (retries = 2): Promise<UserRole> => {
+            try {
+              const role = await getUserRole(session.user);
+              return role;
+            } catch (err) {
+              if (retries > 0) {
+                console.warn(`⚠️ 獲取角色失敗，剩餘重試次數: ${retries}，1 秒後重試...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return fetchRoleWithRetry(retries - 1);
+              }
+              throw err;
+            }
+          };
+          
+          // 獲取角色（帶重試），完成後才停止 loading
+          fetchRoleWithRetry()
             .then((role) => {
               if (mounted) {
                 console.log('✅ 初始化獲取角色成功，設置為:', role, 'Email:', session.user.email);
@@ -296,10 +327,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   role,
                   createdAt: session.user.created_at,
                 });
+                setLoading(false); // 角色獲取成功後才停止 loading
               }
             })
             .catch((err) => {
-              console.warn('⚠️ 初始化獲取角色失敗，使用默認角色 viewer:', err);
+              console.warn('⚠️ 初始化獲取角色失敗（已重試），使用默認角色 viewer:', err);
               // 使用默認角色 viewer，不影響用戶使用（更安全）
               if (mounted) {
                 setUser({
@@ -308,6 +340,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   role: 'viewer',
                   createdAt: session.user.created_at,
                 });
+                setLoading(false); // 即使失敗也要停止 loading
               }
             });
         } else {

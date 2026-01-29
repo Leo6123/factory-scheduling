@@ -42,6 +42,7 @@ const CACHE_DURATION = 30000; // 30 秒快取
 export function clearScheduleCache() {
   cachedItems = null;
   lastLoadTime = 0;
+  lastRequestTime = 0; // 也清除節流時間，允許立即重新載入
   console.log('🗑️ 已清除排程資料快取（Realtime 更新）');
 }
 
@@ -345,6 +346,10 @@ export function useScheduleData(initialItems: ScheduleItem[] = []) {
       const newItems = items.filter(i => i.id !== itemId);
       setItems(newItems);
       saveToLocalStorage(newItems);
+      // 清除快取，確保下次載入時從資料庫重新讀取
+      cachedItems = newItems;
+      lastLoadTime = Date.now();
+      console.log(`✅ 已刪除項目 ${itemId}，快取已更新`);
     }
   }, [items]);
 

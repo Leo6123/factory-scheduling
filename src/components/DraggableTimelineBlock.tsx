@@ -259,9 +259,11 @@ export default function DraggableTimelineBlock({
         >
           🔧 {item.maintenanceHours} 小時
         </div>
-      ) : item.isCleaningProcess && item.cleaningType ? (
+      ) : item.isCleaningProcess ? (
         <div className="text-[10px] text-blue-400">
-          {CLEANING_PROCESS_DURATION[item.cleaningType]} 分鐘
+          {item.cleaningType 
+            ? CLEANING_PROCESS_DURATION[item.cleaningType] 
+            : item.quantity} 分鐘
         </div>
       ) : (
         <div className="text-[10px] text-gray-300 truncate">

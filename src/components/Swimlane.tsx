@@ -59,8 +59,13 @@ function getBlocksForDate(
     // 故障維修：使用 maintenanceHours
     // 一般訂單：根據卡片上的出量 (outputRate) 計算時長
     let totalDuration: number;
-    if (item.isCleaningProcess && item.cleaningType) {
-      totalDuration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60; // 分鐘轉小時
+    if (item.isCleaningProcess) {
+      if (item.cleaningType) {
+        totalDuration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60; // 分鐘轉小時
+      } else {
+        // 自訂時間：使用 quantity（分鐘）轉換為小時
+        totalDuration = item.quantity / 60;
+      }
     } else if (item.isMaintenance && item.maintenanceHours) {
       totalDuration = item.maintenanceHours; // 直接使用小時
     } else {
@@ -285,7 +290,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   }, []);
   const [viewMode, setViewMode] = useState<"card" | "timeline">("timeline");
   const [dropPreview, setDropPreview] = useState<{ lineId: string; hour: number } | null>(null);
-  const [cardDayRange, setCardDayRange] = useState<1 | 15 | 30 | 31>(1); // 卡片模式的日期範圍
+  const [cardDayRange, setCardDayRange] = useState<number>(1); // 卡片模式的日期範圍
   
   // Google Sheets QC 狀態連動
   // 從環境變數取得 Google Sheet ID，或使用預設值
@@ -446,6 +451,19 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState<number | null>(now.getDate());
   
+  // 當月份或年份變更時，自動調整日期範圍到該月實際天數
+  useEffect(() => {
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+    // 如果當前選擇的日期範圍超過該月天數，自動調整
+    if (cardDayRange > daysInMonth && cardDayRange > 1) {
+      setCardDayRange(daysInMonth);
+    }
+    // 如果選擇的日期超過該月天數，也要調整
+    if (selectedDay && selectedDay > daysInMonth) {
+      setSelectedDay(daysInMonth);
+    }
+  }, [selectedYear, selectedMonth, cardDayRange, selectedDay]);
+  
   const timelineContainerRef = useRef<HTMLDivElement>(null);
 
   // 時間軸固定為 24 小時
@@ -506,8 +524,13 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     let duration: number;
     
     // 清機流程：分鐘轉小時
-    if (item.isCleaningProcess && item.cleaningType) {
-      duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
+    if (item.isCleaningProcess) {
+      if (item.cleaningType) {
+        duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
+      } else {
+        // 自訂時間：使用 quantity（分鐘）轉換為小時
+        duration = item.quantity / 60;
+      }
     } else if (item.isMaintenance && item.maintenanceHours) {
       // 故障維修：使用 maintenanceHours
       duration = item.maintenanceHours;
@@ -612,20 +635,46 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
             }
           }
           
-          // 直接從資料庫刪除，然後重新載入資料以確保同步
+          // 直接從資料庫刪除，然後驗證刪除是否成功
           (async () => {
             try {
               let deleteSuccess = false;
               if (supabase) {
-                const { error } = await supabase
+                console.log(`🗑️ 正在從資料庫刪除卡片: ${draggedItemId}`);
+                
+                // 執行刪除操作
+                const { error: deleteError } = await supabase
                   .from(TABLES.SCHEDULE_ITEMS)
                   .delete()
                   .eq('id', draggedItemId);
-                if (error) {
-                  console.error('刪除失敗:', error);
-                  alert('刪除失敗，請檢查網路連線');
+                
+                if (deleteError) {
+                  console.error('❌ 刪除失敗:', deleteError);
+                  console.error('錯誤代碼:', deleteError.code);
+                  console.error('錯誤訊息:', deleteError.message);
+                  alert(`刪除失敗: ${deleteError.message}\n\n請檢查 Supabase RLS 政策是否允許刪除操作`);
                 } else {
-                  deleteSuccess = true;
+                  // 驗證刪除是否成功：查詢該項目是否還存在
+                  const { data: checkData, error: checkError } = await supabase
+                    .from(TABLES.SCHEDULE_ITEMS)
+                    .select('id')
+                    .eq('id', draggedItemId)
+                    .single();
+                  
+                  if (checkError && checkError.code === 'PGRST116') {
+                    // PGRST116 表示沒有找到記錄，這是預期的結果
+                    console.log(`✅ 驗證成功：卡片 ${draggedItemId} 已從資料庫刪除`);
+                    deleteSuccess = true;
+                  } else if (checkData) {
+                    // 如果還能查到資料，表示刪除沒有真正生效
+                    console.error('❌ 刪除驗證失敗：卡片仍存在於資料庫中');
+                    console.error('這可能是 RLS 政策問題，請檢查 DELETE 權限');
+                    alert('刪除失敗：卡片仍存在於資料庫中\n\n請在 Supabase 執行以下 SQL 檢查 RLS 政策：\nSELECT * FROM pg_policies WHERE tablename = \'schedule_items\';');
+                  } else {
+                    // 其他情況，假設刪除成功
+                    console.log(`✅ 資料庫刪除操作完成`);
+                    deleteSuccess = true;
+                  }
                 }
               } else {
                 // 如果沒有 Supabase，直接標記為成功（使用 localStorage）
@@ -634,17 +683,14 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
               
               if (deleteSuccess) {
                 console.log(`✅ 成功刪除卡片: ${draggedItemId}`);
-                // 不調用 saveScheduleItems，因為它可能會失敗（例如欄位不存在）
-                // 而且即使失敗，我們也無法確保 dbItems 會正確更新
-                // 相反，我們直接保持 localItems 的狀態，並在同步邏輯中保護它
+                console.log(`📊 刪除後本地狀態項目數: ${filteredItems.length}`);
                 
-                // 刪除完成後，延遲重置標記，確保所有狀態更新完成
-                // 在重置標記前，useEffect 不會同步 dbItems 到 localItems（因為 isDeleting 為 true）
-                setTimeout(() => {
-                  setIsDeleting(false);
-                  // 重置標記後，useEffect 會同步 dbItems 到 localItems
-                  // 但同步邏輯會保護 localItems，如果 dbItems 是空陣列或包含舊資料，不會覆蓋 localItems
-                }, 500);
+                // 清除快取，確保下次載入時從資料庫重新讀取
+                clearScheduleCache();
+                
+                // 不需要重新載入資料，因為本地狀態已經更新
+                // 重新載入可能會因為快取或延遲導致問題
+                setIsDeleting(false);
               } else {
                 // 刪除失敗時，恢復本地狀態
                 setLocalItems(scheduleItems);
@@ -1232,7 +1278,7 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
   }, [scheduleItems, selectedDateStr, lineConfigs]);
 
   // 取得日期範圍內的日期字串陣列
-  const getDateRange = (days: 1 | 15 | 30 | 31): string[] => {
+  const getDateRange = (days: number): string[] => {
     if (!selectedDay) return [];
     const dates: string[] = [];
     
@@ -1477,12 +1523,11 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
 
               {/* 卡片模式日期範圍選項 */}
               {viewMode === "card" && (() => {
-                // 計算當月天數（30 或 31）
+                // 計算當月天數（可能是 28, 29, 30 或 31）
                 const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-                const monthEndDay = daysInMonth === 30 ? 30 : 31;
                 
-                // 日期範圍選項：1日, 15日, 30日或31日
-                const dayRangeOptions: (1 | 15 | 30 | 31)[] = [1, 15, monthEndDay];
+                // 日期範圍選項：1日, 15日, 該月最後一天
+                const dayRangeOptions: number[] = [1, 15, daysInMonth];
                 
                 return (
                   <div className="flex items-center gap-1 ml-2 border-l border-white/10 pl-3">
@@ -1696,8 +1741,13 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
 // 計算卡片時長的輔助函數
 function getItemDuration(item: ScheduleItem): number {
   let duration: number;
-  if (item.isCleaningProcess && item.cleaningType) {
-    duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
+  if (item.isCleaningProcess) {
+    if (item.cleaningType) {
+      duration = CLEANING_PROCESS_DURATION[item.cleaningType] / 60;
+    } else {
+      // 自訂時間：使用 quantity（分鐘）轉換為小時
+      duration = item.quantity / 60;
+    }
   } else if (item.isMaintenance && item.maintenanceHours) {
     duration = item.maintenanceHours;
   } else {
