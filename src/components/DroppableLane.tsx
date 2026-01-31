@@ -3,6 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { ScheduleItem } from "@/types/schedule";
 import { LineConfig } from "@/types/productionLine";
+import { CAPACITY_LINES } from "@/constants/productionLines";
 import DraggableCard from "./DraggableCard";
 import LineConfigEditor from "./LineConfigEditor";
 
@@ -171,8 +172,8 @@ export default function DroppableLane({
             ≈ {estimatedHours || "0.0"}h
           </div>
           
-          {/* 剩餘產能 */}
-          {remainingCapacity !== null && (
+          {/* 剩餘產能 - 只顯示計入月產能的產線 */}
+          {remainingCapacity !== null && (CAPACITY_LINES as readonly string[]).includes(lineId) && (
             <div className={`text-xs mt-1 pt-1 border-t border-white/10 w-full text-right
                             ${remainingCapacity >= 0 ? "text-cyan-400" : "text-red-400"}`}>
               剩餘: {remainingCapacity.toLocaleString()} KG

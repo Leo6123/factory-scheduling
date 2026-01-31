@@ -1212,35 +1212,44 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
     (item) => item.lineId === UNSCHEDULED_LANE.id
   );
 
-  // 計算已排程卡片的順序（按照24小時時間軸的順序）
+  // 計算已排程卡片的順序（使用所有已排程卡片，跨所有日期，保持未排程卡片順序一致）
   const scheduledItemOrder = useMemo(() => {
-    if (!selectedDateStr) {
-      console.log('📋 未選擇日期，無法計算排程順序');
-      return [];
+    // 從所有產線收集所有已排程的卡片，按照日期和時間順序排列
+    const scheduledBlocks: Array<{ 
+      productName: string; 
+      scheduleDate: string; 
+      startHour: number; 
+      lineId: string;
+      absoluteTime: number; // 用於排序的絕對時間（日期 + 小時）
+    }> = [];
+    
+    // 收集所有已排程的項目（排除未排程項目）
+    const allScheduledItems = scheduleItems.filter(
+      (item) => item.scheduleDate && item.startHour !== undefined && item.lineId && item.lineId !== UNSCHEDULED_LANE.id
+    );
+    
+    // 將每個已排程項目轉換為區塊格式
+    for (const item of allScheduledItems) {
+      if (!item.scheduleDate || item.startHour === undefined) continue;
+      
+      // 計算絕對時間（日期 + 小時）用於排序
+      const dateObj = new Date(item.scheduleDate);
+      const absoluteTime = dateObj.getTime() + (item.startHour * 60 * 60 * 1000);
+      
+      scheduledBlocks.push({
+        productName: item.productName,
+        scheduleDate: item.scheduleDate,
+        startHour: item.startHour,
+        lineId: item.lineId,
+        absoluteTime,
+      });
     }
     
-    // 從所有產線收集已排程的卡片，按照時間順序排列
-    const scheduledBlocks: Array<{ productName: string; startHour: number; lineId: string }> = [];
-    
-    for (const line of PRODUCTION_LINES) {
-      const blocks = getBlocksForDate(scheduleItems, line.id, selectedDateStr, lineConfigs);
-      for (const block of blocks) {
-        // 只取當天開始的區塊（不包含跨日延續的）
-        if (!block.isCarryOver) {
-          scheduledBlocks.push({
-            productName: block.item.productName,
-            startHour: block.displayStartHour,
-            lineId: line.id,
-          });
-        }
-      }
-    }
-    
-    // 按照時間順序排序
+    // 按照絕對時間順序排序（先按日期，再按時間）
     scheduledBlocks.sort((a, b) => {
-      // 先按時間排序
-      if (a.startHour !== b.startHour) {
-        return a.startHour - b.startHour;
+      // 先按絕對時間排序
+      if (a.absoluteTime !== b.absoluteTime) {
+        return a.absoluteTime - b.absoluteTime;
       }
       // 時間相同時，按產線ID排序（保持穩定性）
       return a.lineId.localeCompare(b.lineId);
@@ -1262,20 +1271,21 @@ export default function Swimlane({ initialItems }: SwimlaneProps) {
       }
     }
     
-    console.log('📋 已排程卡片順序:', {
-      date: selectedDateStr,
+    console.log('📋 已排程卡片順序（跨所有日期）:', {
+      totalScheduledItems: allScheduledItems.length,
       totalBlocks: scheduledBlocks.length,
       prefixOrder,
-      blocks: scheduledBlocks.map(b => ({
+      sampleBlocks: scheduledBlocks.slice(0, 10).map(b => ({
         prefix: b.productName.match(/^([A-Z]{2})/)?.[1] || '?',
         productName: b.productName,
+        date: b.scheduleDate,
         hour: b.startHour,
         lineId: b.lineId,
       })),
     });
     
     return prefixOrder;
-  }, [scheduleItems, selectedDateStr, lineConfigs]);
+  }, [scheduleItems, lineConfigs]);
 
   // 取得日期範圍內的日期字串陣列
   const getDateRange = (days: number): string[] => {

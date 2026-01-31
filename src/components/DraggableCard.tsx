@@ -161,8 +161,8 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
 
   const handleMaterialReadyDateClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // 已排程時或混合缸卡片都可以編輯
-    if (onMaterialReadyDateChange && (item.scheduleDate || item.materialDescription === "混合缸排程")) {
+    // 所有卡片都可以編輯齊料時間（只要有編輯權限和回調函數）
+    if (onMaterialReadyDateChange && canEdit) {
       // 如果沒有齊料時間，使用今天的日期作為預設值
       const defaultDate = item.materialReadyDate || new Date().toISOString().split('T')[0];
       setEditMaterialReadyDate(defaultDate);
@@ -331,41 +331,32 @@ export default function DraggableCard({ item, color, onToggleCrystallization, on
             )}
           </div>
           
-          {/* 齊料時間 - 可編輯（已排程時或混合缸卡片，需有編輯權限） */}
-          {(item.scheduleDate || item.materialDescription === "混合缸排程") && (
-            <div 
-              className="text-xs text-gray-300 mb-1"
-              onPointerDown={(e) => isEditingMaterialReadyDate && e.stopPropagation()}
-            >
-              <span className="text-gray-500">齊料時間:</span>{" "}
-              {isEditingMaterialReadyDate && canEdit ? (
-                <input
-                  type="date"
-                  value={editMaterialReadyDate}
-                  onChange={(e) => setEditMaterialReadyDate(e.target.value)}
-                  onBlur={handleMaterialReadyDateSave}
-                  onKeyDown={handleMaterialReadyDateKeyDown}
-                  className="px-1 py-0.5 bg-gray-800 border border-purple-500 rounded text-purple-400 font-semibold text-xs outline-none"
-                  autoFocus
-                />
-              ) : (
-                <span 
-                  className={`text-purple-400 ${canEdit && onMaterialReadyDateChange ? "cursor-pointer hover:underline hover:text-purple-300" : ""}`}
-                  onClick={canEdit ? handleMaterialReadyDateClick : undefined}
-                  title={canEdit && onMaterialReadyDateChange ? "點擊編輯齊料時間" : undefined}
-                >
-                  {item.materialReadyDate || (canEdit && onMaterialReadyDateChange ? "點擊設定" : "")}
-                </span>
-              )}
-            </div>
-          )}
-          {/* 齊料時間 - 未排程時只顯示（不可編輯，混合缸卡片除外） */}
-          {item.materialReadyDate && !item.scheduleDate && item.materialDescription !== "混合缸排程" && (
-            <div className="text-xs text-gray-300 mb-1">
-              <span className="text-gray-500">齊料時間:</span>{" "}
-              <span className="text-purple-400">{item.materialReadyDate}</span>
-            </div>
-          )}
+          {/* 齊料時間 - 可編輯（所有卡片，需有編輯權限） */}
+          <div 
+            className="text-xs text-gray-300 mb-1"
+            onPointerDown={(e) => isEditingMaterialReadyDate && e.stopPropagation()}
+          >
+            <span className="text-gray-500">齊料時間:</span>{" "}
+            {isEditingMaterialReadyDate && canEdit ? (
+              <input
+                type="date"
+                value={editMaterialReadyDate}
+                onChange={(e) => setEditMaterialReadyDate(e.target.value)}
+                onBlur={handleMaterialReadyDateSave}
+                onKeyDown={handleMaterialReadyDateKeyDown}
+                className="px-1 py-0.5 bg-gray-800 border border-purple-500 rounded text-purple-400 font-semibold text-xs outline-none"
+                autoFocus
+              />
+            ) : (
+              <span 
+                className={`text-purple-400 ${canEdit && onMaterialReadyDateChange ? "cursor-pointer hover:underline hover:text-purple-300" : ""}`}
+                onClick={canEdit ? handleMaterialReadyDateClick : undefined}
+                title={canEdit && onMaterialReadyDateChange ? "點擊編輯齊料時間" : undefined}
+              >
+                {item.materialReadyDate || (canEdit && onMaterialReadyDateChange ? "點擊設定" : "")}
+              </span>
+            )}
+          </div>
           
           {/* Caution 警告：齊料時間晚於排程時間才顯示 */}
           {item.materialReadyDate && item.scheduleDate && item.startHour !== undefined && (() => {

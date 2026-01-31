@@ -224,6 +224,7 @@ export async function saveScheduleItemsToDB(items: ScheduleItem[]): Promise<bool
           console.error('❌ 重試儲存仍然失敗:', error);
           console.error('錯誤代碼:', error.code);
           console.error('錯誤訊息:', error.message);
+          
           console.error('\n⚠️ 建議：在 Supabase SQL Editor 執行 supabase_add_missing_columns.sql 腳本');
           console.error('   這會自動添加缺失的欄位：material_ready_date 和 recipe_items');
         }
